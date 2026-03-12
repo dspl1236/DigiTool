@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec
+*.egg-info/
+.DS_Store
+Thumbs.db
+venv/
+desktop/build_tmp/
+desktop/*.spec*
+dist/

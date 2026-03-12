@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DigifantTool — G60 ECU Editor</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500&display=swap');
+
+:root {
+  --bg: #0a0c0f;
+  --surface: #111418;
+  --surface2: #181c22;
+  --border: #252b35;
+  --accent: #e8b84b;
+  --accent2: #e85b4b;
+  --accent3: #4be87a;
+  --text: #c8d0dc;
+  --text-dim: #5a6475;
+  --mono: 'Share Tech Mono', monospace;
+  --sans: 'Barlow Condensed', sans-serif;
+  --body: 'Barlow', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* scan line overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* ---- HEADER ---- */
+header {
+  background: var(--surface);
+  border-bottom: 2px solid var(--accent);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  font-family: var(--sans);
+  font-weight: 900;
+  font-size: 22px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.logo span { color: var(--text-dim); font-weight: 400; font-size: 13px; letter-spacing: 1px; margin-left: 8px; }
+
+.header-status {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  display: inline-block;
+  margin-right: 6px;
+}
+.status-dot.ok { background: var(--accent3); box-shadow: 0 0 8px var(--accent3); }
+.status-dot.warn { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+/* ---- LAYOUT ---- */
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: auto 1fr;
+  height: calc(100vh - 56px);
+}
+
+/* ---- SIDEBAR ---- */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  grid-row: 1 / 3;
+}
+
+.sidebar-section {
+  border-bottom: 1px solid var(--border);
+  padding: 16px;
+}
+
+.sidebar-section h3 {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+/* File drop zone */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(232,184,75,0.05);
+  color: var(--accent);
+}
+.drop-zone .icon { font-size: 28px; margin-bottom: 8px; }
+
+/* File slots */
+.file-slot {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.file-slot:hover { border-color: var(--accent); }
+.file-slot.active { border-color: var(--accent); background: rgba(232,184,75,0.08); }
+.file-slot .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-slot .fbadge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: rgba(232,184,75,0.15);
+  color: var(--accent);
+}
+
+/* Nav items */
+.nav-item {
+  padding: 9px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: rgba(232,184,75,0.1); color: var(--accent); border-left: 3px solid var(--accent); }
+.nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+/* ECU Info box */
+.ecu-info {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.8;
+}
+.ecu-info .row { display: flex; justify-content: space-between; }
+.ecu-info .label { color: var(--text-dim); }
+.ecu-info .val { color: var(--accent); }
+.ecu-info .val.green { color: var(--accent3); }
+.ecu-info .val.red { color: var(--accent2); }
+
+/* ---- MAIN ---- */
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Tab bar */
+.tab-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-end;
+  padding: 0 20px;
+  gap: 2px;
+  height: 42px;
+}
+.tab {
+  padding: 8px 16px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Content area */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Section title */
+.section-title {
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.section-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+  font-family: var(--mono);
+}
+
+/* ---- MAP VIEWER ---- */
+.map-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.map-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.map-card.full { grid-column: 1 / -1; }
+
+.map-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.map-title {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.map-addr { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+
+.map-body { padding: 12px; }
+
+/* Heat grid */
+.heat-grid {
+  display: grid;
+  gap: 1px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.heat-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 1px;
+  transition: transform 0.1s, outline 0.1s;
+  font-size: 9px;
+  color: rgba(0,0,0,0.8);
+  font-weight: bold;
+}
+.heat-cell:hover { transform: scale(1.3); z-index: 10; outline: 2px solid white; }
+.heat-cell.selected { outline: 2px solid var(--accent); transform: scale(1.15); }
+
+/* 1D table */
+.table-1d {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.cell-1d {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 6px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: transform 0.1s;
+  color: rgba(0,0,0,0.85);
+  font-weight: bold;
+  min-width: 32px;
+  text-align: center;
+}
+.cell-1d:hover { transform: scale(1.15); outline: 2px solid white; }
+
+/* RPM axis pills */
+.rpm-axis {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.rpm-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+}
+
+/* ---- DIFF PANEL ---- */
+.diff-table {
+  font-family: var(--mono);
+  font-size: 12px;
+  width: 100%;
+  border-collapse: collapse;
+}
+.diff-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-table td {
+  padding: 5px 12px;
+  border-bottom: 1px solid rgba(37,43,53,0.5);
+}
+.diff-table tr:hover td { background: rgba(255,255,255,0.02); }
+.diff-up { color: var(--accent3); }
+.diff-down { color: var(--accent2); }
+.diff-same { color: var(--text-dim); }
+.addr-col { color: var(--text-dim); }
+.region-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: rgba(232,184,75,0.12);
+  color: var(--accent);
+}
+
+/* ---- STATS PANEL ---- */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 16px;
+}
+.stat-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-family: var(--mono);
+  font-size: 24px;
+  color: var(--accent);
+  line-height: 1;
+}
+.stat-unit { font-size: 13px; color: var(--text-dim); margin-left: 4px; }
+
+/* ---- EDITOR ---- */
+.editor-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.editor-label {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  width: 220px;
+  padding-top: 8px;
+}
+.editor-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 7px 10px;
+  width: 120px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.editor-input:focus { border-color: var(--accent); }
+.editor-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding-top: 8px;
+}
+
+/* Buttons */
+.btn {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 9px 20px;
+  border-radius: 3px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+}
+.btn-primary:hover { background: #f5ca60; }
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--accent2);
+  color: var(--accent2);
+}
+.btn-danger:hover { background: rgba(232,91,75,0.1); }
+.btn-ghost {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.btn-ghost:hover { border-color: var(--text-dim); }
+
+/* Legend */
+.legend {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  align-items: center;
+}
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+/* Selected cell info */
+.cell-info {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-top: 10px;
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+.cell-info span { color: var(--text-dim); }
+.cell-info strong { color: var(--accent); }
+
+/* Inline checkboxes */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+}
+.toggle-row input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* Alert box */
+.alert {
+  padding: 10px 14px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+.alert-warn { background: rgba(232,184,75,0.08); border: 1px solid rgba(232,184,75,0.3); color: var(--accent); }
+.alert-info { background: rgba(75,232,122,0.06); border: 1px solid rgba(75,232,122,0.25); color: var(--accent3); }
+.alert-danger { background: rgba(232,91,75,0.08); border: 1px solid rgba(232,91,75,0.3); color: var(--accent2); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Welcome screen */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 40px;
+}
+.welcome-logo {
+  font-family: var(--sans);
+  font-size: 64px;
+  font-weight: 900;
+  color: var(--accent);
+  letter-spacing: 4px;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.welcome-sub {
+  font-family: var(--sans);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 3px;
+  margin-bottom: 32px;
+  text-transform: uppercase;
+}
+.welcome-hint {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-dim);
+  max-width: 400px;
+  line-height: 1.7;
+}
+.welcome-arrow {
+  font-size: 32px;
+  color: var(--accent);
+  margin-top: 20px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity: 0.3; } }
+
+/* dropdown */
+select.editor-input option { background: var(--surface2); }
+
+/* Hidden input */
+#fileInput { display: none; }
+
+/* G60 flags section */
+.flags-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.flag-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px;
+}
+.flag-card h4 {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.flag-card p {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-bottom: 12px;
+  font-family: var(--mono);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">DigifantTool <span>G60 / G40 ECU EDITOR v0.1</span></div>
+  <div class="header-status">
+    <span id="statusDot" class="status-dot"></span>
+    <span id="statusText">NO ROM LOADED</span>
+    <span id="romSize" style="color:var(--text-dim)"></span>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <h3>ROM Files</h3>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">⬆</div>
+        Drop .BIN / .bin here<br>or click to browse
+      </div>
+      <input type="file" id="fileInput" accept=".bin,.BIN" multiple>
+      <div id="fileList"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Navigation</h3>
+      <div class="nav-item active" onclick="showPanel('overview')" id="nav-overview">
+        <span class="nav-icon">◈</span> Overview
+      </div>
+      <div class="nav-item" onclick="showPanel('ignition')" id="nav-ignition">
+        <span class="nav-icon">⚡</span> Ignition Map
+      </div>
+      <div class="nav-item" onclick="showPanel('fuel')" id="nav-fuel">
+        <span class="nav-icon">⛽</span> Fuel Map
+      </div>
+      <div class="nav-item" onclick="showPanel('boost')" id="nav-boost">
+        <span class="nav-icon">🌀</span> Boost / ISV
+      </div>
+      <div class="nav-item" onclick="showPanel('corrections')" id="nav-corrections">
+        <span class="nav-icon">⚙</span> Corrections
+      </div>
+      <div class="nav-item" onclick="showPanel('diff')" id="nav-diff">
+        <span class="nav-icon">⊕</span> Compare / Diff
+      </div>
+      <div class="nav-item" onclick="showPanel('flags')" id="nav-flags">
+        <span class="nav-icon">⚑</span> G60 Code Flags
+      </div>
+      <div class="nav-item" onclick="showPanel('hex')" id="nav-hex">
+        <span class="nav-icon">〒</span> Hex View
+      </div>
+      <div class="nav-item" onclick="showPanel('export')" id="nav-export">
+        <span class="nav-icon">↓</span> Export ROM
+      </div>
+    </div>
+
+    <div class="sidebar-section" id="ecuInfoSection" style="display:none">
+      <h3>ECU Info</h3>
+      <div class="ecu-info" id="ecuInfo"></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="tab-bar" id="tabBar" style="display:none">
+      <div class="tab active" id="tab-active" onclick="selectFile(activeFileIdx)">Active ROM</div>
+      <div class="tab" id="tab-ref" onclick="selectRefFile()" style="display:none">Reference ROM</div>
+    </div>
+
+    <div class="content">
+      <!-- WELCOME -->
+      <div class="panel active" id="panel-welcome">
+        <div class="welcome">
+          <div class="welcome-logo">DF1</div>
+          <div class="welcome-sub">Digifant 1 — G60 / G40 ECU Editor</div>
+          <div class="welcome-hint">Load a 27C256 BIN dump (32KB) using the sidebar.<br>Supports Corrado G60, Polo G40, and PG-engine variants.</div>
+          <div class="welcome-arrow">←</div>
+        </div>
+      </div>
+
+      <!-- OVERVIEW -->
+      <div class="panel" id="panel-overview">
+        <div class="section-title">ROM Overview</div>
+        <div class="section-sub" id="overviewSub">—</div>
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="map-container" style="grid-template-columns:1fr">
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">RPM Axis (Scalar Map)</span>
+              <span class="map-addr">0x420C — 16×1 16-bit</span>
+            </div>
+            <div class="map-body">
+              <div class="rpm-axis" id="rpmAxis"></div>
+            </div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Key Table Checksums</span>
+              <span class="map-addr">map integrity</span>
+            </div>
+            <div class="map-body" id="checksumPanel" style="font-family:var(--mono);font-size:12px;line-height:2;color:var(--text-dim)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- IGNITION MAP -->
+      <div class="panel" id="panel-ignition">
+        <div class="section-title">Ignition Timing Map</div>
+        <div class="section-sub">0x4004 — 16×16 — Formula: (210 - value) / 2.86 = °BTDC</div>
+        <div class="legend">
+          <span class="legend-swatch" style="background:#1a3a2a"></span> Low advance
+          <span class="legend-swatch" style="background:#2d6e4a"></span>
+          <span class="legend-swatch" style="background:#e8b84b"></span>
+          <span class="legend-swatch" style="background:#e85b4b"></span> High advance
+          <span style="margin-left:auto; font-size:11px">Click cell to inspect/edit</span>
+        </div>
+        <div id="ignMap" class="heat-grid" style="grid-template-columns:repeat(16,1fr);max-width:800px"></div>
+        <div class="cell-info" id="ignCellInfo" style="display:none"></div>
+      </div>
+
+      <!-- FUEL MAP -->
+      <div class="panel" id="panel-fuel">
+        <div class="section-title">Fuel Injection Map</div>
+        <div class="section-sub">0x4104 — 16×16 — Raw byte value (higher = richer)</div>
+        <div class="legend">
+          <span class="legend-swatch" style="background:#1a2a3a"></span> Lean
+          <span class="legend-swatch" style="background:#1a4a6a"></span>
+          <span class="legend-swatch" style="background:#e8b84b"></span>
+          <span class="legend-swatch" style="background:#e85b4b"></span> Rich
+          <span style="margin-left:auto; font-size:11px">Click cell to inspect/edit</span>
+        </div>
+        <div id="fuelMap" class="heat-grid" style="grid-template-columns:repeat(16,1fr);max-width:800px"></div>
+        <div class="cell-info" id="fuelCellInfo" style="display:none"></div>
+      </div>
+
+      <!-- BOOST -->
+      <div class="panel" id="panel-boost">
+        <div class="section-title">Boost &amp; ISV Control</div>
+        <div class="section-sub">Boost cut tables and ISV (Idle Stabilisation Valve) control</div>
+        <div class="map-container">
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Boost Cut — No Knock</span>
+              <span class="map-addr">0x450F — 17 bytes</span>
+            </div>
+            <div class="map-body">
+              <div class="table-1d" id="boostCutNK"></div>
+            </div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Boost Cut — With Knock</span>
+              <span class="map-addr">0x4520 — 17 bytes</span>
+            </div>
+            <div class="map-body">
+              <div class="table-1d" id="boostCutK"></div>
+            </div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">ISV Boost Control</span>
+              <span class="map-addr">0x4531 — 16 bytes</span>
+            </div>
+            <div class="map-body">
+              <div class="table-1d" id="isvControl"></div>
+            </div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">WOT Enrichment</span>
+              <span class="map-addr">0x4541 — 17 bytes</span>
+            </div>
+            <div class="map-body">
+              <div class="table-1d" id="wotEnrich"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CORRECTIONS -->
+      <div class="panel" id="panel-corrections">
+        <div class="section-title">Enrichment &amp; Corrections</div>
+        <div class="section-sub">Temperature compensation, accel enrichment, knock multipliers</div>
+        <div class="map-container">
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Warmup Enrichment</span>
+              <span class="map-addr">0x42DD — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="warmupEnrich"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">ECT Temp Compensation 1</span>
+              <span class="map-addr">0x42FF — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="ectComp1"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">IAT Compensation</span>
+              <span class="map-addr">0x42EE — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="iatComp"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Knock Retard Rate</span>
+              <span class="map-addr">0x425C — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="knockRetard"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Coil Dwell Time</span>
+              <span class="map-addr">0x422C — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="coilDwell"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Accel Enrichment vs ECT</span>
+              <span class="map-addr">0x4375 — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="accelEnrich"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DIFF -->
+      <div class="panel" id="panel-diff">
+        <div class="section-title">ROM Compare / Diff</div>
+        <div class="section-sub">Load 2 ROMs to compare byte-by-byte with map region tagging</div>
+        <div class="alert alert-info" id="diffHint">Load a second ROM file — it will appear as "Reference ROM" in the tab bar above.</div>
+        <div id="diffStats" style="margin-bottom:16px"></div>
+        <table class="diff-table" id="diffTable">
+          <thead><tr>
+            <th>ADDRESS</th>
+            <th>REGION</th>
+            <th>ACTIVE</th>
+            <th>REFERENCE</th>
+            <th>DELTA</th>
+            <th>MEANING</th>
+          </tr></thead>
+          <tbody id="diffBody"></tbody>
+        </table>
+      </div>
+
+      <!-- FLAGS -->
+      <div class="panel" id="panel-flags">
+        <div class="section-title">G60 Code Flags</div>
+        <div class="section-sub">Known byte patches for G60 triple-map firmware — read/detect from ROM</div>
+        <div class="alert alert-warn">⚠ These patches modify code bytes — always back up your ROM before applying. Write support coming soon.</div>
+        <div class="flags-grid" id="flagsGrid"></div>
+      </div>
+
+      <!-- HEX VIEW -->
+      <div class="panel" id="panel-hex">
+        <div class="section-title">Hex View</div>
+        <div class="section-sub">Raw ROM bytes — 16 bytes per row</div>
+        <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
+          <input class="editor-input" id="hexGoto" placeholder="Jump to addr (hex)" style="width:180px" oninput="hexGoto()">
+          <select class="editor-input" id="hexRegionJump" onchange="hexJumpToRegion()" style="width:200px">
+            <option value="">Jump to region...</option>
+            <option value="4004">Ignition Map (0x4004)</option>
+            <option value="4104">Fuel Map (0x4104)</option>
+            <option value="420C">RPM Scalar (0x420C)</option>
+            <option value="450F">Boost Cut NoKnock (0x450F)</option>
+            <option value="4520">Boost Cut Knock (0x4520)</option>
+            <option value="4531">ISV Control (0x4531)</option>
+            <option value="5BC2">Rev Limit (0x5BC2)</option>
+          </select>
+        </div>
+        <div id="hexView" style="font-family:var(--mono);font-size:11px;line-height:1.9;color:var(--text);white-space:pre;overflow-x:auto;max-height:65vh;overflow-y:auto;background:var(--surface);padding:12px;border-radius:4px;border:1px solid var(--border)"></div>
+      </div>
+
+      <!-- EXPORT -->
+      <div class="panel" id="panel-export">
+        <div class="section-title">Export ROM</div>
+        <div class="section-sub">Download modified BIN for programming</div>
+        <div class="alert alert-warn">⚠ Editing is currently read-only in v0.1. Cell edit support coming in next build. Export your loaded ROM as-is for reference.</div>
+        <div style="display:flex;gap:12px;margin-top:20px">
+          <button class="btn btn-primary" onclick="exportROM()">⬇ Download Active ROM</button>
+          <button class="btn btn-ghost" onclick="exportROM('ref')">⬇ Download Reference ROM</button>
+        </div>
+        <div style="margin-top:24px">
+          <div class="section-title" style="font-size:16px;margin-bottom:12px">Rev Limit Editor</div>
+          <div class="alert alert-info" id="revLimitInfo"></div>
+          <div class="editor-row">
+            <div class="editor-label">Target RPM Limit</div>
+            <input class="editor-input" id="revLimitInput" type="number" min="3000" max="9000" step="100" value="7200" oninput="updateRevPreview()">
+            <div class="editor-note" id="revLimitPreview"></div>
+          </div>
+          <button class="btn btn-primary" onclick="applyRevLimit()" style="margin-top:8px">Apply to ROM &amp; Export</button>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div>
+
+<script>
+// ========== STATE ==========
+let roms = [];           // array of { name, data: Uint8Array }
+let activeFileIdx = -1;
+let refFileIdx = -1;
+let selectedCell = null;
+
+// ========== G60 MAP DEFINITIONS ==========
+const MAPS = {
+  ignition:   { addr: 0x4004, rows: 16, cols: 16 },
+  fuel:       { addr: 0x4104, rows: 16, cols: 16 },
+  rpmScalar:  { addr: 0x420C, size: 16, bits: 16 },
+  coilDwell:  { addr: 0x422C, size: 16 },
+  maxAdvance: { addr: 0x423C, size: 16 },
+  knockMult:  { addr: 0x424C, size: 16 },
+  knockRetard:{ addr: 0x425C, size: 16 },
+  knockDecay: { addr: 0x426C, size: 16 },
+  warmup:     { addr: 0x42DD, size: 17 },
+  iatComp:    { addr: 0x42EE, size: 17 },
+  ectComp1:   { addr: 0x42FF, size: 17 },
+  accelEnrich:{ addr: 0x4375, size: 17 },
+  boostCutNK: { addr: 0x450F, size: 17 },
+  boostCutK:  { addr: 0x4520, size: 17 },
+  isvControl: { addr: 0x4531, size: 16 },
+  wotEnrich:  { addr: 0x4541, size: 17 },
+  revLimit:   { addr: 0x5BC2, size: 2 },
+};
+
+// Region name for any address
+const REGIONS = [
+  [0x4004,0x4103,'Ignition Map'],
+  [0x4104,0x4203,'Fuel Map'],
+  [0x420C,0x422B,'RPM Scalar'],
+  [0x422C,0x423B,'Coil Dwell'],
+  [0x423C,0x424B,'Max Advance'],
+  [0x424C,0x425B,'Knock Multiplier'],
+  [0x425C,0x426B,'Knock Retard'],
+  [0x426C,0x427B,'Knock Decay'],
+  [0x42DD,0x42EC,'Warmup Enrichment'],
+  [0x42EE,0x42FD,'IAT Compensation'],
+  [0x42FF,0x430E,'ECT Comp 1'],
+  [0x4375,0x4384,'Accel Enrichment'],
+  [0x450F,0x4519,'Boost Cut NoKnock'],
+  [0x4520,0x4530,'Boost Cut Knock'],
+  [0x4531,0x4540,'ISV Control'],
+  [0x4541,0x4551,'WOT Enrichment'],
+  [0x5BC2,0x5BC3,'Rev Limit'],
+];
+
+function regionName(addr) {
+  for (const [s,e,n] of REGIONS) if (addr >= s && addr <= e) return n;
+  return null;
+}
+
+// ========== G60 CODE FLAGS ==========
+const G60_FLAGS = [
+  {
+    name: 'Digilag Disable',
+    addr1: 0x4433, expect1: [0x01,0x00], patch1: [0x00,0x00],
+    addr2: 0x4435, expect2: [0x03,0x00], patch2: [0x00,0x00],
+    desc: 'Removes the WOT entry delay at RPM <3149 and >3149. Allows immediate full-power enrichment.',
+    risk: 'Low — calibration change only.'
+  },
+  {
+    name: 'Open Loop Lambda',
+    addr1: 0x6269, expect1: [0xBD,0x6D,0x07], patch1: [0x01,0x01,0x01],
+    desc: 'Disables closed-loop lambda correction for fully open-loop tuning. Required for large injector tunes.',
+    risk: 'High — will run rich/lean without proper fuel map calibration.'
+  },
+  {
+    name: 'ISV Disable',
+    addr1: 0x6287, expect1: [0xBD,0x66,0x0C], patch1: [0x01,0x01,0x01],
+    desc: 'Disables ISV boost bleed control. Useful when ISV is removed or when using external boost controller.',
+    risk: 'Medium — removes software boost limiting via ISV.'
+  },
+];
+
+// ========== FILE HANDLING ==========
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  [...e.dataTransfer.files].forEach(loadFile);
+});
+fileInput.addEventListener('change', e => [...e.target.files].forEach(loadFile));
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const data = new Uint8Array(e.target.result);
+    if (data.length !== 32768) {
+      alert(`${file.name}: Expected 32768 bytes (27C256), got ${data.length}. Not a valid Digifant ROM.`);
+      return;
+    }
+    const existing = roms.findIndex(r => r.name === file.name);
+    if (existing >= 0) { roms[existing].data = data; }
+    else { roms.push({ name: file.name, data }); }
+    renderFileList();
+    if (activeFileIdx < 0) selectFile(0);
+    else if (roms.length >= 2 && refFileIdx < 0) selectRefFile(roms.length-1);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderFileList() {
+  const fl = document.getElementById('fileList');
+  fl.innerHTML = '';
+  roms.forEach((rom, i) => {
+    const div = document.createElement('div');
+    div.className = 'file-slot' + (i === activeFileIdx ? ' active' : '');
+    div.onclick = () => selectFile(i);
+    div.innerHTML = `<span class="fname">${rom.name}</span><span class="fbadge">${i === activeFileIdx ? 'ACTIVE' : i === refFileIdx ? 'REF' : '32K'}</span>`;
+    fl.appendChild(div);
+  });
+}
+
+function selectFile(idx) {
+  activeFileIdx = idx;
+  if (refFileIdx < 0 && roms.length > 1) refFileIdx = roms.findIndex((_, i) => i !== idx);
+  renderFileList();
+  updateHeader();
+  renderAll();
+  showPanel('overview');
+  document.getElementById('tabBar').style.display = roms.length > 0 ? 'flex' : 'none';
+  document.getElementById('ecuInfoSection').style.display = 'block';
+}
+
+function selectRefFile(idx) {
+  if (idx !== undefined) refFileIdx = idx;
+  else refFileIdx = roms.findIndex((_, i) => i !== activeFileIdx);
+  renderFileList();
+  updateDiff();
+  const t = document.getElementById('tab-ref');
+  if (refFileIdx >= 0 && roms[refFileIdx]) {
+    t.style.display = 'block';
+    t.textContent = roms[refFileIdx].name;
+  }
+}
+
+function updateHeader() {
+  if (activeFileIdx < 0) return;
+  const rom = roms[activeFileIdx];
+  document.getElementById('statusDot').className = 'status-dot ok';
+  document.getElementById('statusText').textContent = rom.name;
+  document.getElementById('romSize').textContent = `${rom.data.length} bytes`;
+  document.getElementById('tab-active').textContent = rom.name;
+}
+
+// ========== RENDER ENGINE ==========
+function renderAll() {
+  if (activeFileIdx < 0) return;
+  const rom = roms[activeFileIdx].data;
+  renderOverview(rom);
+  renderIgnition(rom);
+  renderFuel(rom);
+  renderBoost(rom);
+  renderCorrections(rom);
+  renderFlags(rom);
+  renderHex(rom);
+  updateDiff();
+  updateRevPreview();
+}
+
+// ---- OVERVIEW ----
+function renderOverview(rom) {
+  const name = roms[activeFileIdx].name;
+  document.getElementById('overviewSub').textContent = name + ' — Digifant 1 / 27C256 / 32KB';
+
+  // RPM axis
+  const rpmAxis = document.getElementById('rpmAxis');
+  rpmAxis.innerHTML = '';
+  for (let i = 0; i < 16; i++) {
+    const hi = rom[0x420C + i*2], lo = rom[0x420C + i*2 + 1];
+    const raw = (hi << 8) | lo;
+    const rpm = raw ? Math.round(15000000 / raw) : 0;
+    const div = document.createElement('div');
+    div.className = 'rpm-pill';
+    div.textContent = rpm ? `${rpm}` : '??';
+    rpmAxis.appendChild(div);
+  }
+
+  // Rev limit
+  const rlHi = rom[0x5BC2], rlLo = rom[0x5BC3];
+  const rlRaw = (rlHi << 8) | rlLo;
+  const rlRPM = rlRaw ? Math.round(30000000 / rlRaw) : 0;
+
+  // Ignition stats
+  let ignMin = 999, ignMax = -999, ignSum = 0;
+  for (let i = 0; i < 256; i++) {
+    const deg = (210 - rom[0x4004+i]) / 2.86;
+    ignMin = Math.min(ignMin, deg); ignMax = Math.max(ignMax, deg); ignSum += deg;
+  }
+
+  // Fuel stats
+  let fMin = 999, fMax = 0, fSum = 0;
+  for (let i = 0; i < 256; i++) {
+    const v = rom[0x4104+i];
+    fMin = Math.min(fMin, v); fMax = Math.max(fMax, v); fSum += v;
+  }
+
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Rev Limit</div>
+      <div class="stat-value">${rlRPM > 1000 && rlRPM < 12000 ? rlRPM.toLocaleString() : '??'}<span class="stat-unit">RPM</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Ign Advance Avg</div>
+      <div class="stat-value">${(ignSum/256).toFixed(1)}<span class="stat-unit">°BTDC</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Fuel Map Avg</div>
+      <div class="stat-value">${Math.round(fSum/256)}<span class="stat-unit">raw</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Ignition Range</div>
+      <div class="stat-value" style="font-size:16px">${ignMin.toFixed(1)}° – ${ignMax.toFixed(1)}<span class="stat-unit">°</span></div>
+    </div>
+  `;
+
+  // Checksum
+  document.getElementById('checksumPanel').innerHTML = `
+    <span style="color:var(--text-dim)">Ignition map sum: </span><span style="color:var(--accent)">${Array.from(rom.slice(0x4004,0x4104)).reduce((a,b)=>a+b,0)}</span><br>
+    <span style="color:var(--text-dim)">Fuel map sum:     </span><span style="color:var(--accent)">${Array.from(rom.slice(0x4104,0x4204)).reduce((a,b)=>a+b,0)}</span><br>
+    <span style="color:var(--text-dim)">ROM checksum:     </span><span style="color:var(--accent)">${Array.from(rom).reduce((a,b)=>a+b,0) & 0xFFFF}</span><br>
+    <span style="color:var(--text-dim)">Rev raw:          </span><span style="color:var(--accent)">${rlHi.toString(16).toUpperCase().padStart(2,'0')} ${rlLo.toString(16).toUpperCase().padStart(2,'0')} → 0x${rlRaw.toString(16).toUpperCase()}</span>
+  `;
+  document.getElementById('revLimitInfo').textContent = `Current rev limit: ${rlRPM > 1000 && rlRPM < 12000 ? rlRPM + ' RPM' : 'Unknown (raw: 0x'+rlRaw.toString(16).toUpperCase()+')'} — raw bytes: ${rlHi.toString(16).toUpperCase()} ${rlLo.toString(16).toUpperCase()}`;
+
+  // ECU info panel
+  document.getElementById('ecuInfo').innerHTML = `
+    <div class="row"><span class="label">File</span><span class="val">${roms[activeFileIdx].name.substring(0,18)}</span></div>
+    <div class="row"><span class="label">Size</span><span class="val green">32768 B ✓</span></div>
+    <div class="row"><span class="label">Rev Limit</span><span class="val">${rlRPM > 1000 && rlRPM < 12000 ? rlRPM+' RPM' : '??'}</span></div>
+    <div class="row"><span class="label">Ign Avg</span><span class="val">${(ignSum/256).toFixed(1)}° BTDC</span></div>
+    <div class="row"><span class="label">Fuel Avg</span><span class="val">${Math.round(fSum/256)} raw</span></div>
+  `;
+}
+
+// ---- HEAT MAP HELPERS ----
+function heatColor(val, min, max, scheme) {
+  const t = Math.max(0, Math.min(1, (val - min) / (max - min || 1)));
+  if (scheme === 'ignition') {
+    // dark green → yellow → red
+    if (t < 0.5) {
+      const r = Math.round(26 + t*2*180);
+      const g = Math.round(58 + t*2*120);
+      const b = Math.round(42);
+      return `rgb(${r},${g},${b})`;
+    } else {
+      const s = (t-0.5)*2;
+      const r = Math.round(206 + s*26);
+      const g = Math.round(178 - s*127);
+      const b = Math.round(75 - s*50);
+      return `rgb(${r},${g},${b})`;
+    }
+  } else {
+    // blue → yellow → red
+    if (t < 0.5) {
+      const r = Math.round(26 + t*2*180);
+      const g = Math.round(42 + t*2*100);
+      const b = Math.round(58 + t*2*80);
+      return `rgb(${r},${g},${b})`;
+    } else {
+      const s = (t-0.5)*2;
+      return `rgb(${Math.round(206+s*26)},${Math.round(142-s*91)},${Math.round(138-s*100)})`;
+    }
+  }
+}
+
+function render16x16(rom, addr, containerId, scheme, cellInfoId, labelFn) {
+  const cont = document.getElementById(containerId);
+  cont.innerHTML = '';
+  const vals = Array.from(rom.slice(addr, addr+256));
+  const min = Math.min(...vals), max = Math.max(...vals);
+  vals.forEach((v, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'heat-cell';
+    cell.style.background = heatColor(v, min, max, scheme);
+    cell.textContent = v.toString(16).toUpperCase().padStart(2,'0');
+    cell.title = labelFn(v, i);
+    cell.onclick = () => {
+      cont.querySelectorAll('.heat-cell').forEach(c => c.classList.remove('selected'));
+      cell.classList.add('selected');
+      const row = Math.floor(i/16), col = i%16;
+      const info = document.getElementById(cellInfoId);
+      info.style.display = 'flex';
+      info.innerHTML = `<span>Row <strong>${row}</strong></span><span>Col <strong>${col}</strong></span><span>Addr <strong>0x${(addr+i).toString(16).toUpperCase()}</strong></span><span>Raw <strong>0x${v.toString(16).toUpperCase()} (${v})</strong></span><span>${labelFn(v,i)}</span>`;
+    };
+    cont.appendChild(cell);
+  });
+}
+
+function renderIgnition(rom) {
+  render16x16(rom, 0x4004, 'ignMap', 'ignition', 'ignCellInfo',
+    (v) => `${((210-v)/2.86).toFixed(1)}° BTDC`);
+}
+
+function renderFuel(rom) {
+  render16x16(rom, 0x4104, 'fuelMap', 'fuel', 'fuelCellInfo',
+    (v) => `Raw: ${v} (0x${v.toString(16).toUpperCase()})`);
+}
+
+// ---- 1D TABLE RENDERER ----
+function render1D(rom, addr, size, containerId, labelFn, scheme='fuel') {
+  const cont = document.getElementById(containerId);
+  if (!cont) return;
+  cont.innerHTML = '';
+  const vals = Array.from(rom.slice(addr, addr+size));
+  const min = Math.min(...vals), max = Math.max(...vals);
+  vals.forEach((v, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell-1d';
+    cell.style.background = heatColor(v, min, max, scheme);
+    cell.textContent = v.toString(16).toUpperCase().padStart(2,'0');
+    cell.title = labelFn ? labelFn(v, i) : `[${i}] = 0x${v.toString(16).toUpperCase()} (${v})`;
+    cont.appendChild(cell);
+  });
+}
+
+function renderBoost(rom) {
+  render1D(rom, 0x450F, 17, 'boostCutNK', (v,i) => `[${i}] Raw: ${v} (${v} kPa approx)`);
+  render1D(rom, 0x4520, 17, 'boostCutK',  (v,i) => `[${i}] Raw: ${v}`);
+  render1D(rom, 0x4531, 16, 'isvControl', (v,i) => `[${i}] ISV duty: ${v}`);
+  render1D(rom, 0x4541, 17, 'wotEnrich',  (v,i) => `[${i}] WOT enrich: ${v}`);
+}
+
+function renderCorrections(rom) {
+  render1D(rom, 0x42DD, 17, 'warmupEnrich',  (v,i) => `[${i}] Warmup: ${v}`);
+  render1D(rom, 0x42FF, 17, 'ectComp1',      (v,i) => `[${i}] ECT Comp: ${v}`);
+  render1D(rom, 0x42EE, 17, 'iatComp',       (v,i) => `[${i}] IAT Comp: ${v}`);
+  render1D(rom, 0x425C, 16, 'knockRetard',   (v,i) => `[${i}] Knock retard: ${v}`);
+  render1D(rom, 0x422C, 16, 'coilDwell',     (v,i) => `[${i}] Dwell: ${v}`);
+  render1D(rom, 0x4375, 17, 'accelEnrich',   (v,i) => `[${i}] Accel: ${v}`);
+}
+
+// ---- FLAGS ----
+function renderFlags(rom) {
+  const grid = document.getElementById('flagsGrid');
+  grid.innerHTML = '';
+  G60_FLAGS.forEach(flag => {
+    let detected = false, patched = false;
+    if (flag.addr1 !== undefined) {
+      const stock  = flag.expect1 ? flag.expect1.every((b,i) => rom[flag.addr1+i] === b) : null;
+      const isPatch = flag.patch1.every((b,i) => rom[flag.addr1+i] === b);
+      patched = isPatch;
+      detected = stock !== null;
+    }
+    const statusColor = patched ? 'var(--accent3)' : 'var(--text-dim)';
+    const statusLabel = patched ? '✓ PATCHED' : (detected ? '○ STOCK' : '? UNKNOWN');
+
+    const card = document.createElement('div');
+    card.className = 'flag-card';
+    card.innerHTML = `
+      <h4>${flag.name} <span style="float:right;color:${statusColor};font-size:11px">${statusLabel}</span></h4>
+      <p>${flag.desc}</p>
+      <p style="color:var(--accent2);margin-bottom:4px">Risk: ${flag.risk}</p>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">
+        Addr: 0x${flag.addr1.toString(16).toUpperCase()}
+        ${flag.addr2 ? ' + 0x'+flag.addr2.toString(16).toUpperCase() : ''}
+        | Stock: ${(flag.expect1||[]).map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}
+        | Patch: ${flag.patch1.map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ---- HEX VIEW ----
+let hexHighlightAddr = -1;
+function renderHex(rom, highlightAddr) {
+  const out = [];
+  const hl = highlightAddr ?? hexHighlightAddr;
+  for (let row = 0; row < rom.length; row += 16) {
+    const addr = row.toString(16).toUpperCase().padStart(4,'0');
+    const region = regionName(row);
+    const regionTag = region ? ` \x1b[33m[${region}]\x1b[0m` : '';
+    const bytes = [];
+    for (let i = 0; i < 16; i++) {
+      const b = rom[row+i] !== undefined ? rom[row+i].toString(16).toUpperCase().padStart(2,'0') : '  ';
+      bytes.push(row+i === hl ? `[${b}]` : ` ${b}`);
+    }
+    const ascii = Array.from(rom.slice(row, row+16)).map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+    out.push(`<span style="color:var(--text-dim)">${addr}</span>  ${bytes.join('')}  <span style="color:var(--text-dim)">${ascii}</span>${region ? `  <span style="color:var(--accent);font-size:10px">${region}</span>` : ''}`);
+  }
+  document.getElementById('hexView').innerHTML = out.join('\n');
+}
+
+function hexGoto() {
+  if (activeFileIdx < 0) return;
+  const val = parseInt(document.getElementById('hexGoto').value, 16);
+  if (isNaN(val)) return;
+  hexHighlightAddr = val;
+  renderHex(roms[activeFileIdx].data, val);
+  // scroll to row
+  const rowNum = Math.floor(val / 16);
+  const hexDiv = document.getElementById('hexView');
+  const lineHeight = 19;
+  hexDiv.scrollTop = rowNum * lineHeight;
+}
+
+function hexJumpToRegion() {
+  const sel = document.getElementById('hexRegionJump');
+  if (!sel.value) return;
+  document.getElementById('hexGoto').value = sel.value;
+  hexGoto();
+}
+
+// ---- DIFF ----
+function updateDiff() {
+  if (activeFileIdx < 0 || refFileIdx < 0 || !roms[refFileIdx]) return;
+  const a = roms[activeFileIdx].data;
+  const b = roms[refFileIdx].data;
+
+  // show ref tab
+  const t = document.getElementById('tab-ref');
+  t.style.display = 'block';
+  t.textContent = roms[refFileIdx].name;
+
+  const diffs = [];
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    if (a[i] !== b[i]) diffs.push([i, a[i], b[i]]);
+  }
+
+  document.getElementById('diffStats').innerHTML = `
+    <div class="alert alert-info">Found <strong>${diffs.length}</strong> different bytes between <strong>${roms[activeFileIdx].name}</strong> and <strong>${roms[refFileIdx].name}</strong></div>
+  `;
+  document.getElementById('diffHint').style.display = 'none';
+
+  const body = document.getElementById('diffBody');
+  body.innerHTML = '';
+
+  // Group by region
+  const byRegion = {};
+  diffs.forEach(([addr, av, bv]) => {
+    const r = regionName(addr) || 'Other/Code';
+    if (!byRegion[r]) byRegion[r] = [];
+    byRegion[r].push([addr, av, bv]);
+  });
+
+  // Show first 300 diffs
+  let shown = 0;
+  Object.entries(byRegion).forEach(([region, rows]) => {
+    rows.slice(0, 50).forEach(([addr, av, bv]) => {
+      if (shown++ > 300) return;
+      const delta = bv - av;
+      const tr = document.createElement('tr');
+      const ignDeg = region === 'Ignition Map' ? `${((210-av)/2.86).toFixed(1)}° → ${((210-bv)/2.86).toFixed(1)}°` : '';
+      tr.innerHTML = `
+        <td class="addr-col">0x${addr.toString(16).toUpperCase().padStart(4,'0')}</td>
+        <td><span class="region-badge">${region}</span></td>
+        <td>0x${av.toString(16).toUpperCase().padStart(2,'0')} (${av})</td>
+        <td>0x${bv.toString(16).toUpperCase().padStart(2,'0')} (${bv})</td>
+        <td class="${delta>0?'diff-up':delta<0?'diff-down':'diff-same'}">${delta>0?'+':''}${delta}</td>
+        <td style="color:var(--text-dim);font-size:11px">${ignDeg}</td>
+      `;
+      body.appendChild(tr);
+    });
+  });
+}
+
+// ---- REV LIMIT ----
+function updateRevPreview() {
+  const target = parseInt(document.getElementById('revLimitInput').value);
+  if (isNaN(target)) return;
+  const raw = Math.round(30000000 / target);
+  const hi = (raw >> 8) & 0xFF, lo = raw & 0xFF;
+  const actual = Math.round(30000000 / raw);
+  document.getElementById('revLimitPreview').textContent = `→ Bytes: ${hi.toString(16).toUpperCase().padStart(2,'0')} ${lo.toString(16).toUpperCase().padStart(2,'0')}  (actual: ~${actual} RPM)`;
+}
+
+function applyRevLimit() {
+  if (activeFileIdx < 0) return;
+  const target = parseInt(document.getElementById('revLimitInput').value);
+  if (isNaN(target) || target < 3000 || target > 9000) { alert('Enter RPM between 3000-9000'); return; }
+  const raw = Math.round(30000000 / target);
+  const hi = (raw >> 8) & 0xFF, lo = raw & 0xFF;
+  // Make a copy
+  const modified = new Uint8Array(roms[activeFileIdx].data);
+  modified[0x5BC2] = hi;
+  modified[0x5BC3] = lo;
+  downloadBin(modified, roms[activeFileIdx].name.replace('.BIN','').replace('.bin','') + `_rev${target}.BIN`);
+}
+
+function exportROM(which) {
+  const idx = (which === 'ref') ? refFileIdx : activeFileIdx;
+  if (idx < 0 || !roms[idx]) { alert('No ROM loaded'); return; }
+  downloadBin(roms[idx].data, roms[idx].name);
+}
+
+function downloadBin(data, filename) {
+  const blob = new Blob([data], {type: 'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ========== PANEL NAV ==========
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const panel = document.getElementById('panel-' + name);
+  const nav = document.getElementById('nav-' + name);
+  if (panel) panel.classList.add('active');
+  if (nav) nav.classList.add('active');
+  if (activeFileIdx < 0) {
+    document.getElementById('panel-welcome').classList.add('active');
+  }
+}
+</script>
+</body>
+</html>
