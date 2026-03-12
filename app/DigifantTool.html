@@ -735,7 +735,7 @@ select.editor-input option { background: var(--surface2); }
       <!-- IGNITION MAP -->
       <div class="panel" id="panel-ignition">
         <div class="section-title">Ignition Timing Map</div>
-        <div class="section-sub">0x4004 — 16×16 — Formula: (210 - value) / 2.86 = °BTDC</div>
+        <div class="section-sub" id="ignMapSub">0x4004 — 16×16 — Formula: (210 - value) / 2.86 = °BTDC</div>
         <div class="legend">
           <span class="legend-swatch" style="background:#1a3a2a"></span> Low advance
           <span class="legend-swatch" style="background:#2d6e4a"></span>
@@ -765,7 +765,7 @@ select.editor-input option { background: var(--surface2); }
       <!-- FUEL MAP -->
       <div class="panel" id="panel-fuel">
         <div class="section-title">Fuel Injection Map</div>
-        <div class="section-sub">0x4104 — 16×16 — Raw byte value (higher = richer)</div>
+        <div class="section-sub" id="fuelMapSub">0x4104 — 16×16 — Raw byte value (higher = richer)</div>
         <div class="legend">
           <span class="legend-swatch" style="background:#1a2a3a"></span> Lean
           <span class="legend-swatch" style="background:#1a4a6a"></span>
@@ -781,6 +781,7 @@ select.editor-input option { background: var(--surface2); }
       <div class="panel" id="panel-boost">
         <div class="section-title">Boost &amp; ISV Control</div>
         <div class="section-sub">Boost cut tables and ISV (Idle Stabilisation Valve) control</div>
+        <div id="mk2BoostWarning" class="alert alert-warn" style="display:none;margin-bottom:12px">⚠ G40 Mk2: 1D table offsets below are confirmed for G60/Mk3 only. Mk2 equivalents at 0x48C0, 0x52D2, 0x53E0 — display may not reflect actual map locations.</div>
         <div class="map-container">
           <div class="map-card">
             <div class="map-header">
@@ -1302,6 +1303,12 @@ function renderAll() {
   updateDiff();
   updateRevPreview();
   updateIgnRevPreview();
+  // Show/hide Mk2 offset warnings
+  const isMk2 = currentVariant && currentVariant.variant === 'G40_MK2';
+  ['mk2BoostWarning'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isMk2 ? 'block' : 'none';
+  });
 }
 
 // ---- OVERVIEW ----
@@ -1468,13 +1475,33 @@ function render16x16(rom, addr, containerId, scheme, cellInfoId, labelFn) {
   });
 }
 
+// Map offsets vary by ECU generation
+const MAP_OFFSETS = {
+  G60:     { ign: 0x4004, fuel: 0x4104 },
+  G40:     { ign: 0x4004, fuel: 0x4104 },
+  G40_MK2: { ign: 0x50A0, fuel: 0x51A0 },  // Confirmed from YOU54F XDF (2014)
+};
+
+function getMapOffsets() {
+  const v = currentVariant ? currentVariant.variant : 'G60';
+  return MAP_OFFSETS[v] || MAP_OFFSETS['G60'];
+}
+
 function renderIgnition(rom) {
-  render16x16(rom, 0x4004, 'ignMap', 'ignition', 'ignCellInfo',
+  const off = getMapOffsets();
+  const isMk2 = currentVariant && currentVariant.variant === 'G40_MK2';
+  const sub = document.getElementById('ignMapSub');
+  if (sub) sub.textContent = `0x${off.ign.toString(16).toUpperCase()} — 16×16 — Formula: (210 - value) / 2.86 = °BTDC${isMk2 ? ' — G40 Mk2 offsets (XDF confirmed)' : ''}`;
+  render16x16(rom, off.ign, 'ignMap', 'ignition', 'ignCellInfo',
     (v) => `${((210-v)/2.86).toFixed(1)}° BTDC`);
 }
 
 function renderFuel(rom) {
-  render16x16(rom, 0x4104, 'fuelMap', 'fuel', 'fuelCellInfo',
+  const off = getMapOffsets();
+  const isMk2 = currentVariant && currentVariant.variant === 'G40_MK2';
+  const sub = document.getElementById('fuelMapSub');
+  if (sub) sub.textContent = `0x${off.fuel.toString(16).toUpperCase()} — 16×16 — Raw byte value (higher = richer)${isMk2 ? ' — G40 Mk2 offsets (XDF confirmed)' : ''}`;
+  render16x16(rom, off.fuel, 'fuelMap', 'fuel', 'fuelCellInfo',
     (v) => `Raw: ${v} (0x${v.toString(16).toUpperCase()})`);
 }
 
