@@ -986,7 +986,7 @@ select.editor-input option { background: var(--surface2); }
 const KNOWN_CRCS = {
   0x8c6fec45: { variant: 'G60', car: 'Corrado/Golf/Jetta G60',   engine: 'PG',  cal: '022B_93EE', type: 'STOCK', revAddr: 0x4BF2 },
   0xb2bec49d: { variant: 'G40', car: 'Polo G40 Mk3',             engine: 'PY',  cal: 'G40_Mk3',  type: 'STOCK', revAddr: 0x5BC2 },
-  0xbf9d8fef: { variant: 'G40_MK2', car: 'Polo G40 Mk2',        engine: 'PY',  cal: 'G40_Mk2',  type: 'STOCK', revAddr: null   },
+  0xbf9d8fef: { variant: 'G40_MK2', car: 'Polo G40 Mk2',        engine: 'PY',  cal: 'G40_Mk2',  type: 'STOCK', revAddr: null, note: 'Earlier ECU generation — 0xFF lower fill, code mirrored at 0x4000/0x6000, different map offsets' },
 };
 
 // Reset vectors @ 0x7FFE-0x7FFF for each variant
@@ -1061,7 +1061,7 @@ function fingerprintROM(data) {
   if (isOpenLoop)   flags.push({label:'OPEN LOOP LAMBDA', color:'var(--accent2)'});
   if (isDigilagOff) flags.push({label:'DIGILAG REMOVED',  color:'var(--accent3)'});
   if (isvDisable)   flags.push({label:'ISV DISABLED',      color:'var(--accent)'});
-  if (variantInfo.variant === 'G40_MK2') flags.push({label:'G40 MK2 — OFFSETS UNCONFIRMED', color:'var(--accent2)'});
+  if (variantInfo.variant === 'G40_MK2') flags.push({label:'G40 Mk2 ECU — EARLIER GENERATION', color:'var(--accent)'});
 
   // Variant label for UI
   const variantLabel = variantInfo.variant === 'G60'     ? 'G60 PG'
@@ -1072,8 +1072,11 @@ function fingerprintROM(data) {
   // Classification: STOCK / TUNED / UNKNOWN within detected variant
   let classification, classColor, matchName;
   if (variantInfo.variant === 'G40_MK2') {
+    // Mk2 is a different ECU generation — different ROM structure, 0xFF lower fill,
+    // mirrored code at 0x4000/0x6000. Maps are at different offsets, not yet mapped.
+    // Both Mk2 ROMs in the repo are confirmed stock — classify as STOCK but warn.
     classification = 'STOCK'; classColor = 'var(--accent3)';
-    matchName = 'Polo G40 Mk2 — stock (map offsets not fully confirmed)';
+    matchName = 'Polo G40 Mk2 — stock (earlier ECU generation, map offsets differ)';
   } else if (!isOpenLoop && !isDigilagOff && ignAvg < 24 && fuelAvg > (variantInfo.variant==='G60' ? 140 : 110)) {
     classification = 'STOCK'; classColor = 'var(--accent3)';
     matchName = `${variantInfo.car} — appears unmodified`;

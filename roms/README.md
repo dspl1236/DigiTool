@@ -13,7 +13,7 @@ Provided for reference, comparison, and verification purposes only.
 |------|-------------|-----------|------------|-------|
 | `G60_PG_StockEprom_022B93EE.BIN` | Corrado G60 / Golf G60 / Jetta G60 (PG engine) | ~6201 RPM | 200kPa | Primary G60 reference |
 | `G40_StockEprom.BIN` | VW Polo G40 Mk3 | ~6601 RPM | 200kPa | Source: YOU54F/PoloG40Digifant |
-| `G40_Mk2_StockEprom.BIN` | VW Polo G40 Mk2 | — | **250kPa** | Different ROM layout — map offsets unconfirmed |
+| `G40_Mk2_StockEprom.BIN` | VW Polo G40 Mk2 | — | 200kPa* | Confirmed stock. Earlier ECU generation — 0xFF lower fill, code mirrored 0x4000/0x6000, map offsets differ from Mk3/G60 |
 
 ---
 
