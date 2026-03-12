@@ -2,74 +2,66 @@ name: Build DigiTool Windows EXE
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build-windows:
     runs-on: windows-latest
     outputs:
-      exe_name: ${{ steps.ver.outputs.exe }}
-      version: ${{ steps.ver.outputs.num }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      version: ${{ steps.get_version.outputs.version }}
+      exe_name: ${{ steps.get_version.outputs.exe_name }}
 
-      - name: Set up Python 3.11
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Read app version
-        id: ver
-        shell: python
-        run: |
-          import re, os
-          txt = open("desktop/version.py").read()
-          v = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', txt).group(1)
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-            f.write(f"num={v}\n")
-            f.write(f"exe=DigiTool-v{v}\n")
-
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pywebview pyinstaller
+          pip install PyQt5 pyinstaller
 
-      - name: Build EXE with PyInstaller
-        working-directory: desktop
+      - name: Get version
+        id: get_version
+        shell: python
         run: |
-          pyinstaller `
+          import os, re
+          text = open("digitool/version.py").read()
+          ver  = re.search(r'APP_VERSION\s*=\s*["\']([^"\']+)["\']', text).group(1)
+          exe  = f"DigiTool-v{ver}"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={ver}\n")
+              f.write(f"exe_name={exe}\n")
+
+      - name: Build EXE
+        run: |
+          python -m PyInstaller `
             --onefile `
             --windowed `
-            --name "${{ steps.ver.outputs.exe }}" `
-            --add-data "..\app\DigiTool.html;app" `
-            --hidden-import "webview.platforms.winforms" `
-            --hidden-import "clr" `
-            main.py
+            --name DigiTool-v${{ steps.get_version.outputs.version }} `
+            --hidden-import PyQt5.QtCore `
+            --hidden-import PyQt5.QtGui `
+            --hidden-import PyQt5.QtWidgets `
+            digitool/main.py
 
-      - name: Verify EXE
-        run: dir desktop\dist\
-
-      - name: Upload EXE artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: DigiTool-Windows
-          path: desktop/dist/${{ steps.ver.outputs.exe }}.exe
-          retention-days: 90
+          path: dist/DigiTool-v${{ steps.get_version.outputs.version }}.exe
 
-  create-release:
+  release:
     needs: build-windows
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Download EXE
         uses: actions/download-artifact@v4
@@ -77,56 +69,40 @@ jobs:
           name: DigiTool-Windows
           path: dist/
 
-      - name: Get short commit SHA
-        id: sha
-        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
-
       - name: Delete existing latest release
-        run: |
-          gh release delete latest --yes || true
-          git push origin :refs/tags/latest || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
 
-      - name: Create rolling latest release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "DigiTool v${{ needs.build-windows.outputs.version }} — Latest Build"
-          body: |
-            ## DigiTool v${{ needs.build-windows.outputs.version }}
-
-            **Commit:** `${{ steps.sha.outputs.short }}` — ${{ github.event.head_commit.message }}
-
-            ### Download & Run — No Install Needed
-            Just download `DigiTool-v${{ needs.build-windows.outputs.version }}.exe` and run it.
-            No Python, no browser required. Drag your `.BIN` ROM file into the app.
-
-            ### Features
-            - 🔥 Ignition Map — 16×16 heatmap, °BTDC decoded per cell
-            - ⛽ Fuel Map — 16×16 heatmap
-            - 🌀 Boost Cut & ISV control tables
-            - ⚙ Warmup, ECT, IAT, Knock corrections
-            - ⊕ ROM Diff/Compare — byte-by-byte with map region tagging
-            - ⚑ G60 Code Flag detection (Digilag, Open Loop Lambda, ISV disable)
-            - 〒 Hex viewer with region labels + jump-to-address
-            - ↓ Rev Limit editor — enter RPM, exports modified BIN
-
-            ### Supported ECUs
-            | ECU | Chip |
-            |-----|------|
-            | VW Corrado G60 (PG engine) | 27C256 (32KB) |
-            | VW Polo G40 | 27C256 (32KB) |
-            | VW Golf/Jetta G60 | 27C256 (32KB) |
-
-            ### Formula Reference
-            - Ignition: `(210 - byte) / 2.86 = °BTDC`
-            - Rev Limit: `30,000,000 / 16bit_word = RPM`
-
-            ---
-            *VW Digifant 1 G60/G40 ECU Editor*
-          files: dist/${{ needs.build-windows.outputs.exe_name }}.exe
-          draft: false
-          prerelease: false
+      - name: Create latest release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create latest \
+            --title "DigiTool v${{ needs.build-windows.outputs.version }} — Latest Build" \
+            --notes "## DigiTool v${{ needs.build-windows.outputs.version }}
+
+          **Digifant 1 G60 / G40 ECU Editor — Python / PyQt5 desktop app**
+
+          Download \`DigiTool-v${{ needs.build-windows.outputs.version }}.exe\` and run — no install needed.
+
+          ### Supported ECUs
+          - G60 Corrado / Golf / Jetta / Passat Syncro / 16v Limited
+          - G60 Triple-Map (Corrado SLS)
+          - G40 Polo Mk3
+          - G40 Polo Mk2 (early)
+
+          ### Features
+          - ROM variant detection (CRC32 + reset vector fingerprinting)
+          - Ignition and Fuel 16x16 heatmap editors
+          - Correction tables (warmup, ECT, IAT, boost cut, etc.)
+          - Code patch flags (Digilag, Open Loop Lambda, ISV disable)
+          - Full hex view with region labels
+          - ROM diff / compare tool
+          - Save edited ROM back to .BIN
+
+          *VW Digifant 1 — G60/G40 ECU Editor*" \
+            --prerelease \
+            "dist/DigiTool-v${{ needs.build-windows.outputs.version }}.exe"

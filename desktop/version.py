@@ -1,2 +1,0 @@
-APP_VERSION = "0.3.4"
-APP_NAME = "DigiTool"
