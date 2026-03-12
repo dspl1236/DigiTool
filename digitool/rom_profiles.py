@@ -28,7 +28,16 @@ Ignition (G60/G40):  display_deg = (210 - raw_byte) / 2.86   °BTDC
                      raw_byte    = round(210 - deg * 2.86)
 Rev Limit (16-bit):  rpm = 30_000_000 / uint16_be
                      uint16 = 30_000_000 // rpm
-MAP sensor:          All known Digifant 1 ROMs use 200 kPa MAP sensor.
+MAP sensor:          Detected from firmware constant CE 00 C8 (LDX #200) = 200 kPa
+                     or CE 00 FA (LDX #250) = 250 kPa. Fallback: CMPB #200/250.
+                     All known stock ROMs are 200 kPa. No factory 250 kPa ROM identified yet.
+
+G40 SNS patches:     Idle lambda gate  0x593D  BD 59 A7 -> BD 77 50
+                     WOT lambda gate   0x646F  BD 6A 20 -> BD 77 1F
+                     Lambda branch     0x59E5  25 05 -> 01 01 (BCS -> NOP NOP)
+                     Lambda magnitude  0x6516  00 03 -> 00 01 (LDD #3 -> LDD #1)
+                     SNS injects routines into 0x41 fill area @ 0x771F-0x775C
+                     with "copyright 2003 snstuning." string embedded.
 """
 
 from dataclasses import dataclass, field
@@ -90,11 +99,20 @@ KNOWN_CRCS: Dict[int, dict] = {
     ),
     0xb2bec49d: dict(
         variant=VARIANT_G40,        label="Polo G40 Mk3 (stock)",
-        cal="STOCK",  rev_addr=0x5BC2, family=MAP_FAMILY_SINGLE, rpm_limit=None,
+        cal="STOCK",  rev_addr=0x5BC2, family=MAP_FAMILY_SINGLE, rpm_limit=6601,
     ),
     0xbf9d8fef: dict(
         variant=VARIANT_G40_MK2,    label="Polo G40 Mk2 (stock)",
         cal="STOCK",  rev_addr=None,  family=MAP_FAMILY_MK2,    rpm_limit=None,
+    ),
+    # ── G40 Mk3 known tunes (SNS Tuning, YOU54F reference files) ─────────────
+    0xe653d271: dict(
+        variant=VARIANT_G40,        label="Polo G40 Mk3 — SNS WOT/Idle Lambda + 7812 RPM",
+        cal="TUNED",  rev_addr=0x5BC2, family=MAP_FAMILY_SINGLE, rpm_limit=7812,
+    ),
+    0xc662e1e9: dict(
+        variant=VARIANT_G40,        label="Polo G40 Mk3 — 7k Rev Limit",
+        cal="TUNED",  rev_addr=0x5BC2, family=MAP_FAMILY_SINGLE, rpm_limit=6995,
     ),
 }
 
@@ -201,14 +219,64 @@ FAMILY_MAPS: Dict[str, List[MapDef]] = {
 
 
 # ---------------------------------------------------------------------------
-# G60 code patch locations (single-map only)
+# Code patch definitions — keyed by family
 # ---------------------------------------------------------------------------
 
-CODE_PATCHES = {
-    "digilag_lo":   dict(addr=0x4433, stock=b'\x01\x00', patch=b'\x00\x00', label="Digilag (low RPM)"),
-    "digilag_hi":   dict(addr=0x4435, stock=b'\x03\x00', patch=b'\x00\x00', label="Digilag (high RPM)"),
-    "open_loop":    dict(addr=0x6269, stock=b'\xBD\x6D\x07', patch=b'\x01\x01\x01', label="Open Loop Lambda"),
-    "isv_disable":  dict(addr=0x6287, stock=b'\xBD\x66\x0C', patch=b'\x01\x01\x01', label="ISV Disable"),
+# G60 single-map patches (reset vector 45FD)
+CODE_PATCHES_G60 = {
+    "digilag_lo":  dict(addr=0x4433, stock=b'\x01\x00', patch=b'\x00\x00',         label="Digilag (low RPM)"),
+    "digilag_hi":  dict(addr=0x4435, stock=b'\x03\x00', patch=b'\x00\x00',         label="Digilag (high RPM)"),
+    "open_loop":   dict(addr=0x6269, stock=b'\xBD\x6D\x07', patch=b'\x01\x01\x01', label="Open Loop Lambda"),
+    "isv_disable": dict(addr=0x6287, stock=b'\xBD\x66\x0C', patch=b'\x01\x01\x01', label="ISV Disable"),
+}
+
+# G40 Mk3 patches (reset vector 54AA)
+# SNS lambda patches confirmed from YOU54F reference files (2003 snstuning copyright string)
+# SNS injects gate routines into 0x41 fill area @ 0x771F-0x775C
+# with "copyright 2003 snstuning." string embedded.
+CODE_PATCHES_G40 = {
+    # Idle lambda: BSR $59A7 at 0x593C redirected to SNS gate @ 0x7750
+    "sns_idle_lambda_gate": dict(
+        addr=0x593C, stock=b'\xBD\x59\xA7', patch=b'\xBD\x77\x50',
+        label="SNS Idle Lambda Gate",
+    ),
+    # WOT lambda: BSR $6A20 at 0x646F redirected to SNS gate @ 0x771F
+    "sns_wot_lambda_gate": dict(
+        addr=0x646F, stock=b'\xBD\x6A\x20', patch=b'\xBD\x77\x1F',
+        label="SNS WOT Lambda Gate",
+    ),
+    # Lambda branch: BCS $+5 -> NOP NOP disables rich-correction branch
+    "sns_lambda_branch": dict(
+        addr=0x59E5, stock=b'\x25\x05', patch=b'\x01\x01',
+        label="SNS Lambda Branch Disable",
+    ),
+    # Lambda correction magnitude: value byte of LDD #3 -> #1 at 0x6515
+    # Full context: CC 00 [03] (LDD imm16 — checks the operand byte only)
+    "sns_lambda_magnitude": dict(
+        addr=0x6515, stock=b'\x03', patch=b'\x01',
+        label="SNS Lambda Correction (3→1)",
+    ),
+}
+
+# G60 triple-map patches (reset vector 4C14) — same firmware base as single, shifted addresses
+CODE_PATCHES_TRIPLE = {
+    "open_loop":   dict(addr=0x6269, stock=b'\xBD\x6D\x07', patch=b'\x01\x01\x01', label="Open Loop Lambda"),
+    "isv_disable": dict(addr=0x6287, stock=b'\xBD\x66\x0C', patch=b'\x01\x01\x01', label="ISV Disable"),
+}
+
+# Backwards-compat alias — default to G60 table (used by code_flags when family unknown)
+CODE_PATCHES = CODE_PATCHES_G60
+
+FAMILY_PATCHES = {
+    MAP_FAMILY_SINGLE: CODE_PATCHES_G60,   # overridden per-variant in code_flags()
+    MAP_FAMILY_TRIPLE: CODE_PATCHES_TRIPLE,
+    MAP_FAMILY_MK2:    {},
+}
+
+# Variant → patch table override
+VARIANT_PATCHES = {
+    VARIANT_G40:     CODE_PATCHES_G40,
+    VARIANT_G40_MK2: {},
 }
 
 
@@ -298,11 +366,14 @@ class DetectionResult:
             return self.rpm_limit
 
     def code_flags(self, rom: bytes) -> Dict[str, bool]:
-        """Check G60 code patches — returns {key: True=patched, False=stock}."""
+        """Check code patches for this variant — returns {key: True=patched, False=stock}."""
         if self.family == MAP_FAMILY_MK2:
             return {}
+        # Pick the patch table for this specific variant, fall back to family table
+        patch_table = VARIANT_PATCHES.get(self.variant,
+                      FAMILY_PATCHES.get(self.family, CODE_PATCHES_G60))
         flags = {}
-        for key, p in CODE_PATCHES.items():
+        for key, p in patch_table.items():
             addr = p["addr"]
             try:
                 actual = bytes(rom[addr:addr + len(p["stock"])])

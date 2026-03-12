@@ -12,7 +12,8 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 
 from digitool.rom_profiles import (
-    DetectionResult, VARIANT_LABELS, CODE_PATCHES,
+    DetectionResult, VARIANT_LABELS,
+    CODE_PATCHES_G60, VARIANT_PATCHES, FAMILY_PATCHES, MAP_FAMILY_MK2,
     compute_checksum, KNOWN_CRCS, rpm_to_rev_limit, detect_map_sensor
 )
 
@@ -179,22 +180,11 @@ class OverviewTab(QWidget):
         root.addWidget(grp_sensor)
 
         # ── Code flags ───────────────────────────────────────────────────────
-        grp_flags = QGroupBox("Code Patches")
-        self.flags_layout = QVBoxLayout(grp_flags)
+        self.grp_flags = QGroupBox("Code Patches")
+        self.flags_layout = QVBoxLayout(self.grp_flags)
         self._flag_badges: dict = {}
-        for key, p in CODE_PATCHES.items():
-            row = QHBoxLayout()
-            name_lbl = QLabel(p["label"])
-            name_lbl.setFixedWidth(180)
-            name_lbl.setStyleSheet("color: #3d5068; font-size: 11px;")
-            badge = _badge("—", "#3d5068")
-            badge.setFixedWidth(80)
-            self._flag_badges[key] = badge
-            row.addWidget(name_lbl)
-            row.addWidget(badge)
-            row.addStretch()
-            self.flags_layout.addLayout(row)
-        root.addWidget(grp_flags)
+        # Populated dynamically on ROM load via _rebuild_flag_badges()
+        root.addWidget(self.grp_flags)
 
         # ── Map address table (collapsible) ──────────────────────────────────
         from PyQt5.QtWidgets import QPlainTextEdit
@@ -283,7 +273,8 @@ class OverviewTab(QWidget):
             self._set_badge(self.badge_sensor, f"{kpa} kPa", "#e8b84b")
         self.lbl_sensor_method.setText(sensor_method)
 
-        # Code flags
+        # Code flags — rebuild badge rows for this variant's patch table
+        self._rebuild_flag_badges(result)
         flags = result.code_flags(rom)
         for key, badge in self._flag_badges.items():
             if key not in flags:
@@ -414,6 +405,38 @@ class OverviewTab(QWidget):
         self.sig_rom_mutated.emit(self._rom)
 
 
+
+    def _rebuild_flag_badges(self, result: DetectionResult):
+        """Rebuild the Code Patches badge rows for the current variant's patch table."""
+        from PyQt5.QtWidgets import QHBoxLayout, QLabel
+        patch_table = VARIANT_PATCHES.get(result.variant,
+                      FAMILY_PATCHES.get(result.family, CODE_PATCHES_G60))
+        # Clear existing rows
+        while self.flags_layout.count():
+            item = self.flags_layout.takeAt(0)
+            if item.layout():
+                while item.layout().count():
+                    w = item.layout().takeAt(0).widget()
+                    if w:
+                        w.deleteLater()
+        self._flag_badges = {}
+        if not patch_table:
+            lbl = QLabel("No patches defined for this variant")
+            lbl.setStyleSheet("color: #3d5068; font-size: 11px;")
+            self.flags_layout.addWidget(lbl)
+            return
+        for key, p in patch_table.items():
+            row = QHBoxLayout()
+            name_lbl = QLabel(p["label"])
+            name_lbl.setFixedWidth(220)
+            name_lbl.setStyleSheet("color: #3d5068; font-size: 11px;")
+            badge = _badge("—", "#3d5068")
+            badge.setFixedWidth(90)
+            self._flag_badges[key] = badge
+            row.addWidget(name_lbl)
+            row.addWidget(badge)
+            row.addStretch()
+            self.flags_layout.addLayout(row)
 
     @staticmethod
     def _set_badge(badge: QLabel, text: str, color: str):
