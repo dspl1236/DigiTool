@@ -52,9 +52,7 @@ class _Table1D(QWidget):
 
     def load(self, rom: bytes):
         md   = self._map_def
-        # Digifant ROMs start at 0x4000 — subtract base
-        base = 0x4000
-        start = md.data_addr - base
+        start = md.data_addr   # ECU address = file offset directly
         data = []
         for i in range(md.size):
             try:

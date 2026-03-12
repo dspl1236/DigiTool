@@ -248,7 +248,7 @@ class OverviewTab(QWidget):
             return
         new_rpm = self.spin_rev.value()
         raw16   = rpm_to_rev_limit(new_rpm)
-        addr    = self._result.rev_addr - 0x4000   # ROM base offset
+        addr    = self._result.rev_addr   # ECU address = file offset directly
         if isinstance(self._rom, (bytes, bytearray)):
             rom_ba = bytearray(self._rom)
             rom_ba[addr]     = (raw16 >> 8) & 0xFF

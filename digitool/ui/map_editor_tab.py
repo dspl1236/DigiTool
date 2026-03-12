@@ -62,7 +62,7 @@ class _MapPanel(QWidget):
     def load(self, map_def: MapDef, rom: bytearray):
         self._map_def = map_def
         self._rom     = rom
-        start = map_def.data_addr - 0x4000   # ROM files start at 0x4000
+        start = map_def.data_addr   # ECU address = file offset directly
         data  = list(rom[start: start + map_def.size])
         self.table.load_data(data)
 
@@ -72,7 +72,7 @@ class _MapPanel(QWidget):
     def write_back(self, rom: bytearray) -> bytearray:
         if self._map_def is None:
             return rom
-        start = self._map_def.data_addr - 0x4000
+        start = self._map_def.data_addr   # direct file offset
         data  = self.get_data()
         for i, b in enumerate(data):
             rom[start + i] = b

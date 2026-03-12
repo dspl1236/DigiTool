@@ -92,7 +92,7 @@ class HexTab(QWidget):
             chunk = rom[off:off + 16]
             hex_  = " ".join(f"{b:02X}" for b in chunk)
             asc   = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
-            lines.append(f"{off + 0x4000:04X}  {hex_:<47}  {asc}")
+            lines.append(f"{off:04X}  {hex_:<47}  {asc}")
 
         self.txt.setPlainText("\n".join(lines))
 

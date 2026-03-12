@@ -117,7 +117,7 @@ class DiffTab(QWidget):
 
         self.table.setRowCount(0)
         diffs = []
-        base  = 0x4000
+        base  = 0x0000   # ECU address = file offset directly (ROM mapped 1:1)
 
         for i in range(min(len(self._rom_a), len(self._rom_b))):
             ba = self._rom_a[i]
