@@ -743,8 +743,23 @@ select.editor-input option { background: var(--surface2); }
           <span class="legend-swatch" style="background:#e85b4b"></span> High advance
           <span style="margin-left:auto; font-size:11px">Click cell to inspect/edit</span>
         </div>
-        <div id="ignMap" class="heat-grid" style="grid-template-columns:repeat(16,1fr);max-width:800px"></div>
-        <div class="cell-info" id="ignCellInfo" style="display:none"></div>
+        <!-- Single-map (default) -->
+        <div id="ignMapSingle">
+          <div id="ignMap" class="heat-grid" style="grid-template-columns:repeat(16,1fr);max-width:800px"></div>
+          <div class="cell-info" id="ignCellInfo" style="display:none"></div>
+        </div>
+        <!-- Triple-map (G60 triple firmware, hidden by default) -->
+        <div id="ignMapTriple" style="display:none">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--accent);margin-bottom:6px">MAP 1 — 0x4000 (low load / light throttle)</div>
+          <div id="ignMap1" class="heat-grid" style="grid-template-columns:repeat(16,1fr);max-width:800px;margin-bottom:4px"></div>
+          <div class="cell-info" id="ignCellInfo1" style="display:none"></div>
+          <div style="font-family:var(--mono);font-size:12px;color:var(--accent);margin:16px 0 6px">MAP 2 — 0x4100 (mid load)</div>
+          <div id="ignMap2" class="heat-grid" style="grid-template-columns:repeat(16,1fr);max-width:800px;margin-bottom:4px"></div>
+          <div class="cell-info" id="ignCellInfo2" style="display:none"></div>
+          <div style="font-family:var(--mono);font-size:12px;color:var(--accent);margin:16px 0 6px">MAP 3 — 0x4200 (high load / WOT)</div>
+          <div id="ignMap3" class="heat-grid" style="grid-template-columns:repeat(16,1fr);max-width:800px;margin-bottom:4px"></div>
+          <div class="cell-info" id="ignCellInfo3" style="display:none"></div>
+        </div>
 
         <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:18px">
           <div class="section-title" style="font-size:16px;margin-bottom:6px">⏱ Rev Limit</div>
@@ -985,16 +1000,24 @@ select.editor-input option { background: var(--surface2); }
 
 // CRC32 of known stock ROMs (full 32KB)
 const KNOWN_CRCS = {
-  0x8c6fec45: { variant: 'G60', car: 'Corrado/Golf/Jetta G60',   engine: 'PG',  cal: '022B_93EE', type: 'STOCK', revAddr: 0x4BF2 },
-  0xb2bec49d: { variant: 'G40', car: 'Polo G40 Mk3',             engine: 'PY',  cal: 'G40_Mk3',  type: 'STOCK', revAddr: 0x5BC2 },
-  0xbf9d8fef: { variant: 'G40_MK2', car: 'Polo G40 Mk2',        engine: 'PY',  cal: 'G40_Mk2',  type: 'STOCK', revAddr: null, note: 'Earlier ECU generation — 0xFF lower fill, code mirrored at 0x4000/0x6000, different map offsets' },
+  // G60 single-map family (reset 45FD, ign@0x4004, fuel@0x4104, rev@0x4BF2)
+  0x8c6fec45: { variant: 'G60',        car: 'Corrado/Golf/Jetta G60',      engine: 'PG',  cal: '022B_93EE',   type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE' },
+  0xb6367c2f: { variant: 'G60_PASSAT', car: 'Passat G60 Syncro',           engine: 'PG',  cal: 'PASSG60',     type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE' },
+  0x65550fd6: { variant: 'G60_16V',    car: 'G60 16v Limited',             engine: 'PG',  cal: 'limited_16v', type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE', note: '7000 RPM rev limit, higher ignition advance — 1.8 16v G60 variant' },
+  // G60 triple-map family (reset 4C14, ign1@0x4000 ign2@0x4100 ign3@0x4200, fuel@0x4300, rev@0x4456)
+  0x1b198171: { variant: 'G60_TRIPLE', car: 'G60 Triple-Map',              engine: 'PG',  cal: 'stock_triple', type: 'STOCK', revAddr: 0x4456, layout: 'TRIPLE' },
+  0x2cbd1e7a: { variant: 'G60_TRIPLE', car: 'Corrado G60 SLS',             engine: 'PG',  cal: 'corradoSLS',   type: 'STOCK', revAddr: 0x4456, layout: 'TRIPLE', note: '7001 RPM rev limit' },
+  // G40
+  0xb2bec49d: { variant: 'G40',        car: 'Polo G40 Mk3',                engine: 'PY',  cal: 'G40_Mk3',     type: 'STOCK', revAddr: 0x5BC2, layout: 'SINGLE' },
+  0xbf9d8fef: { variant: 'G40_MK2',    car: 'Polo G40 Mk2',                engine: 'PY',  cal: 'G40_Mk2',     type: 'STOCK', revAddr: null,   layout: 'MK2',   note: 'Earlier ECU generation — 0xFF lower fill, code mirrored at 0x4000/0x6000, different map offsets' },
 };
 
 // Reset vectors @ 0x7FFE-0x7FFF for each variant
 const RESET_VECTORS = {
-  '45FD': { variant: 'G60',     confidence: 'HIGH', revAddr: 0x4BF2, note: 'G60 PG triple-map firmware' },
-  '54AA': { variant: 'G40',     confidence: 'HIGH', revAddr: 0x5BC2, note: 'G40 Mk3 standard firmware'  },
-  'E000': { variant: 'G40_MK2', confidence: 'HIGH', revAddr: null,   note: 'G40 Mk2 — different ROM structure, 250kPa MAP sensor' },
+  '45FD': { variant: 'G60',        confidence: 'HIGH', revAddr: 0x4BF2, layout: 'SINGLE', note: 'G60 single-map firmware (ign@0x4004, fuel@0x4104) — Corrado/Golf/Passat/16v' },
+  '4C14': { variant: 'G60_TRIPLE', confidence: 'HIGH', revAddr: 0x4456, layout: 'TRIPLE', note: 'G60 triple-map firmware (ign1/2/3@0x4000/4100/4200, fuel@0x4300)' },
+  '54AA': { variant: 'G40',        confidence: 'HIGH', revAddr: 0x5BC2, layout: 'SINGLE', note: 'G40 Mk3 standard firmware' },
+  'E000': { variant: 'G40_MK2',    confidence: 'HIGH', revAddr: null,   layout: 'MK2',   note: 'G40 Mk2 — different ROM structure' },
 };
 
 function crc32(data) {
@@ -1023,30 +1046,44 @@ function detectVariant(data) {
     return { ...RESET_VECTORS[vec], method: `Reset vector 0x${vec}`, crc32: crcHex };
   }
 
-  // Tier 3: Heuristics
+  // Tier 3: Heuristics — also check triple-map by reset vector 4C14 already handled above
   const rl5bc2 = (data[0x5BC2]<<8)|data[0x5BC3];
   const rl4bf2 = (data[0x4BF2]<<8)|data[0x4BF3];
+  const rl4456 = (data[0x4456]<<8)|data[0x4457];
   const rpm5bc2 = (rl5bc2 > 0x0E00 && rl5bc2 < 0x1500) ? Math.round(30000000/rl5bc2) : null;
   const rpm4bf2 = (rl4bf2 > 0x0E00 && rl4bf2 < 0x1500) ? Math.round(30000000/rl4bf2) : null;
+  const rpm4456 = (rl4456 > 0x0E00 && rl4456 < 0x1500) ? Math.round(30000000/rl4456) : null;
   const fuelAvg = Array.from({length:256},(_,i)=>data[0x4104+i]).reduce((a,b)=>a+b,0)/256;
+  const fuelAvgTriple = Array.from({length:256},(_,i)=>data[0x4300+i]).reduce((a,b)=>a+b,0)/256;
 
+  if (rpm4456 && fuelAvgTriple > 140) {
+    return { variant:'G60_TRIPLE', car:'G60 Triple-Map', confidence:'MEDIUM',
+             method:'Heuristic: revlimit@4456 + triple fuel avg', revAddr:0x4456, layout:'TRIPLE', crc32:crcHex };
+  }
   if (rpm4bf2 && fuelAvg > 140) {
     return { variant:'G60', car:'G60 (PG engine)', confidence:'MEDIUM',
-             method:'Heuristic: revlimit@4BF2 + fuel avg', revAddr:0x4BF2, crc32:crcHex };
+             method:'Heuristic: revlimit@4BF2 + fuel avg', revAddr:0x4BF2, layout:'SINGLE', crc32:crcHex };
   }
   if (rpm5bc2 && fuelAvg < 140) {
     return { variant:'G40', car:'G40 (PY engine)', confidence:'MEDIUM',
-             method:'Heuristic: revlimit@5BC2 + fuel avg', revAddr:0x5BC2, crc32:crcHex };
+             method:'Heuristic: revlimit@5BC2 + fuel avg', revAddr:0x5BC2, layout:'SINGLE', crc32:crcHex };
   }
 
   return { variant:'UNKNOWN', car:'Unknown Digifant 1', confidence:'LOW',
-           method:'No match found', revAddr:null, crc32:crcHex };
+           method:'No match found', revAddr:null, layout:'SINGLE', crc32:crcHex };
 }
 
 function fingerprintROM(data) {
   const variantInfo  = detectVariant(data);
-  const ignAvg  = Array.from({length:256},(_,i)=>(210-data[0x4004+i])/2.86).reduce((a,b)=>a+b,0)/256;
-  const fuelAvg = Array.from({length:256},(_,i)=>data[0x4104+i]).reduce((a,b)=>a+b,0)/256;
+  const isTriple = variantInfo.layout === 'TRIPLE';
+  const isMk2    = variantInfo.variant === 'G40_MK2';
+
+  // Use correct map offsets for ign/fuel averages
+  const ignAddr  = isTriple ? 0x4000 : isMk2 ? 0x50A0 : 0x4004;
+  const fuelAddr = isTriple ? 0x4300 : isMk2 ? 0x51A0 : 0x4104;
+  const ignAvg   = Array.from({length:256},(_,i)=>(210-data[ignAddr+i])/2.86).reduce((a,b)=>a+b,0)/256;
+  const fuelAvg  = Array.from({length:256},(_,i)=>data[fuelAddr+i]).reduce((a,b)=>a+b,0)/256;
+
   const lambdaBytes = [data[0x6269], data[0x626A], data[0x626B]];
   const digilag = [data[0x4433], data[0x4434]];
   const isvDisable   = data[0x6287] === 0x01;
@@ -1056,29 +1093,30 @@ function fingerprintROM(data) {
   // Rev limit from detected address
   const revAddr = variantInfo.revAddr;
   const revRaw  = revAddr ? ((data[revAddr]<<8)|data[revAddr+1]) : null;
-  const revRPM  = (revRaw && revRaw > 0x0E00 && revRaw < 0x1500) ? Math.round(30000000/revRaw) : null;
+  const revRPM  = (revRaw && revRaw > 0x0E00 && revRaw < 0x1600) ? Math.round(30000000/revRaw) : null;
 
   const flags = [];
   if (isOpenLoop)   flags.push({label:'OPEN LOOP LAMBDA', color:'var(--accent2)'});
   if (isDigilagOff) flags.push({label:'DIGILAG REMOVED',  color:'var(--accent3)'});
   if (isvDisable)   flags.push({label:'ISV DISABLED',      color:'var(--accent)'});
-  if (variantInfo.variant === 'G40_MK2') flags.push({label:'G40 Mk2 ECU — EARLIER GENERATION', color:'var(--accent)'});
+  if (isMk2)        flags.push({label:'G40 Mk2 ECU — EARLIER GENERATION', color:'var(--accent)'});
+  if (isTriple)     flags.push({label:'TRIPLE-MAP FIRMWARE', color:'var(--accent3)'});
 
   // Variant label for UI
-  const variantLabel = variantInfo.variant === 'G60'     ? 'G60 PG'
-                     : variantInfo.variant === 'G40'     ? 'G40 PY'
-                     : variantInfo.variant === 'G40_MK2' ? 'G40 Mk2'
-                     : 'UNKNOWN';
+  const variantLabel = {
+    G60: 'G60 PG', G60_PASSAT: 'G60 Passat', G60_16V: 'G60 16v',
+    G60_TRIPLE: 'G60 Triple-Map', G40: 'G40 PY', G40_MK2: 'G40 Mk2'
+  }[variantInfo.variant] || variantInfo.variant || 'UNKNOWN';
 
-  // Classification: STOCK / TUNED / UNKNOWN within detected variant
+  // Classification: STOCK / TUNED
   let classification, classColor, matchName;
-  if (variantInfo.variant === 'G40_MK2') {
-    // Mk2 is a different ECU generation — different ROM structure, 0xFF lower fill,
-    // mirrored code at 0x4000/0x6000. Maps are at different offsets, not yet mapped.
-    // Both Mk2 ROMs in the repo are confirmed stock — classify as STOCK but warn.
+  if (isMk2) {
     classification = 'STOCK'; classColor = 'var(--accent3)';
     matchName = 'Polo G40 Mk2 — stock (earlier ECU generation, map offsets differ)';
-  } else if (!isOpenLoop && !isDigilagOff && ignAvg < 24 && fuelAvg > (variantInfo.variant==='G60' ? 140 : 110)) {
+  } else if (variantInfo.type === 'STOCK' && !isOpenLoop && !isDigilagOff && ignAvg < 25) {
+    classification = 'STOCK'; classColor = 'var(--accent3)';
+    matchName = `${variantInfo.car} — confirmed stock`;
+  } else if (!isOpenLoop && !isDigilagOff && ignAvg < 24 && fuelAvg > (variantInfo.variant?.startsWith('G60') ? 140 : 110)) {
     classification = 'STOCK'; classColor = 'var(--accent3)';
     matchName = `${variantInfo.car} — appears unmodified`;
   } else {
@@ -1090,12 +1128,13 @@ function fingerprintROM(data) {
     ignAvg, fuelAvg, lambdaBytes, digilag,
     isOpenLoop, isDigilagOff, isvDisable,
     flags, classification, classColor, matchName,
-    revRPM, revAddr,
+    revRPM, revAddr, isTriple, isMk2,
     variant: variantInfo.variant, variantLabel,
     variantCar: variantInfo.car,
     detectionMethod: variantInfo.method,
     detectionConfidence: variantInfo.confidence,
     crc32: variantInfo.crc32,
+    layout: variantInfo.layout,
   };
 }
 
@@ -1475,11 +1514,14 @@ function render16x16(rom, addr, containerId, scheme, cellInfoId, labelFn) {
   });
 }
 
-// Map offsets vary by ECU generation
+// Map offsets vary by ECU generation / firmware family
 const MAP_OFFSETS = {
-  G60:     { ign: 0x4004, fuel: 0x4104 },
-  G40:     { ign: 0x4004, fuel: 0x4104 },
-  G40_MK2: { ign: 0x50A0, fuel: 0x51A0 },  // Confirmed from YOU54F XDF (2014)
+  G60:        { ign: 0x4004, fuel: 0x4104, layout: 'SINGLE' },  // Single-map: Corrado, Golf, Passat, 16v
+  G60_PASSAT: { ign: 0x4004, fuel: 0x4104, layout: 'SINGLE' },
+  G60_16V:    { ign: 0x4004, fuel: 0x4104, layout: 'SINGLE' },
+  G60_TRIPLE: { ign: 0x4000, fuel: 0x4300, ign2: 0x4100, ign3: 0x4200, layout: 'TRIPLE', revAddr: 0x4456 },
+  G40:        { ign: 0x4004, fuel: 0x4104, layout: 'SINGLE' },
+  G40_MK2:    { ign: 0x50A0, fuel: 0x51A0, layout: 'MK2' },     // Confirmed from YOU54F XDF (2014)
 };
 
 function getMapOffsets() {
@@ -1489,19 +1531,35 @@ function getMapOffsets() {
 
 function renderIgnition(rom) {
   const off = getMapOffsets();
+  const isTriple = off.layout === 'TRIPLE';
   const isMk2 = currentVariant && currentVariant.variant === 'G40_MK2';
+
+  // Show/hide single vs triple map panels
+  const singleEl = document.getElementById('ignMapSingle');
+  const tripleEl = document.getElementById('ignMapTriple');
+  if (singleEl) singleEl.style.display = isTriple ? 'none' : 'block';
+  if (tripleEl) tripleEl.style.display = isTriple ? 'block' : 'none';
+
   const sub = document.getElementById('ignMapSub');
-  if (sub) sub.textContent = `0x${off.ign.toString(16).toUpperCase()} — 16×16 — Formula: (210 - value) / 2.86 = °BTDC${isMk2 ? ' — G40 Mk2 offsets (XDF confirmed)' : ''}`;
-  render16x16(rom, off.ign, 'ignMap', 'ignition', 'ignCellInfo',
-    (v) => `${((210-v)/2.86).toFixed(1)}° BTDC`);
+  if (isTriple) {
+    if (sub) sub.textContent = '0x4000 / 0x4100 / 0x4200 — Three 16×16 maps — Formula: (210 - value) / 2.86 = °BTDC';
+    render16x16(rom, 0x4000, 'ignMap1', 'ignition', 'ignCellInfo1', (v) => `${((210-v)/2.86).toFixed(1)}° BTDC`);
+    render16x16(rom, 0x4100, 'ignMap2', 'ignition', 'ignCellInfo2', (v) => `${((210-v)/2.86).toFixed(1)}° BTDC`);
+    render16x16(rom, 0x4200, 'ignMap3', 'ignition', 'ignCellInfo3', (v) => `${((210-v)/2.86).toFixed(1)}° BTDC`);
+  } else {
+    if (sub) sub.textContent = `0x${off.ign.toString(16).toUpperCase()} — 16×16 — Formula: (210 - value) / 2.86 = °BTDC${isMk2 ? ' — G40 Mk2 offsets (XDF confirmed)' : ''}`;
+    render16x16(rom, off.ign, 'ignMap', 'ignition', 'ignCellInfo', (v) => `${((210-v)/2.86).toFixed(1)}° BTDC`);
+  }
 }
 
 function renderFuel(rom) {
   const off = getMapOffsets();
   const isMk2 = currentVariant && currentVariant.variant === 'G40_MK2';
+  const isTriple = off.layout === 'TRIPLE';
   const sub = document.getElementById('fuelMapSub');
-  if (sub) sub.textContent = `0x${off.fuel.toString(16).toUpperCase()} — 16×16 — Raw byte value (higher = richer)${isMk2 ? ' — G40 Mk2 offsets (XDF confirmed)' : ''}`;
-  render16x16(rom, off.fuel, 'fuelMap', 'fuel', 'fuelCellInfo',
+  const fuelAddr = isTriple ? 0x4300 : off.fuel;
+  if (sub) sub.textContent = `0x${fuelAddr.toString(16).toUpperCase()} — 16×16 — Raw byte value (higher = richer)${isMk2 ? ' — G40 Mk2 offsets (XDF confirmed)' : ''}${isTriple ? ' — Triple-map firmware' : ''}`;
+  render16x16(rom, fuelAddr, 'fuelMap', 'fuel', 'fuelCellInfo',
     (v) => `Raw: ${v} (0x${v.toString(16).toUpperCase()})`);
 }
 

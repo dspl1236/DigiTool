@@ -93,3 +93,69 @@ Rev limit: Not at 0x5BC2 (reads 0xFFFF on Mk2). Likely encoded differently — s
 | `45 FD` | G60 PG triple-map |
 | `54 AA` | G40 Mk3 (PY) |
 | `E0 00` | G40 Mk2 |
+
+---
+
+## G60 Firmware Families
+
+Two completely separate firmware families exist for G60 ECUs.
+
+### Family A — Single-Map (reset vector `45FD`, revAddr `0x4BF2`)
+> Shared base with G40 Mk3. Same ign/fuel offsets as G40.
+> ROMs: 022B_93EE (Corrado/Golf/Jetta), PASSG60 (Passat Syncro), limited_16v
+
+| Map | Address | Size | Notes |
+|-----|---------|------|-------|
+| Ignition | 0x4004 | 16×16 | `(210 - byte) / 2.86 = °BTDC` |
+| Fuel | 0x4104 | 16×16 | |
+| RPM Scalar | 0x420C | 16×1 16-bit | |
+| Rev Limit | 0x4BF2 | 16-bit | `30,000,000 / 16bit = RPM` |
+| (all G40 1D tables) | same as G40 | — | Shared firmware base |
+
+**limited_16v_G60:** Same layout, 7000 RPM rev limit (vs 6201 stock), modified ignition.
+Not 250kPa — fuel avg 159.8 is identical range to standard 200kPa G60.
+1.8 16v G60 with higher rev ceiling, not a sensor change.
+
+### Family B — Triple-Map (reset vector `4C14`, revAddr `0x4456`)
+> Source: YOU54F XDF by Joseph Davis / Chad Robertson / Marc G60T
+> ROMs: `Stock G60 Three ignition maps.bin`, `corradoSLS.BIN`
+
+| Map | Address | Size | Notes |
+|-----|---------|------|-------|
+| Ignition Map 1 | 0x4000 | 16×16 | Low load / light throttle |
+| Ignition Map 2 | 0x4100 | 16×16 | Mid load |
+| Ignition Map 3 | 0x4200 | 16×16 | High load / WOT |
+| Fuel | 0x4300 | 16×16 | |
+| RPM Scalar | 0x4500 | 16×1 | |
+| Coil Dwell | 0x4520 | 16×1 | |
+| Maximum Advance | 0x4530 | 16×1 | |
+| Knock Multiplier | 0x4540 | 16×1 | |
+| Advance vs ECT | 0x4587 | 16×1 | |
+| Idle Advance Time | 0x4598 | 16×1 | |
+| Idle Ign High Limit | 0x45A8 | 16×1 | |
+| Idle Ign Low Limit | 0x45B8 | 16×1 | |
+| Warmup Enrichment | 0x45C8 | 16×1 | |
+| IAT Compensation | 0x45DA | 16×1 | |
+| ECT Compensation 1 | 0x45EA | 16×1 | |
+| Startup Enrichment | 0x460B | 16×1 | |
+| Battery Compensation | 0x462E | 16×1 | |
+| Accel Enrich Min ΔMAP | 0x463F | 16×1 | |
+| Accel Enrich Mult vs ECT | 0x464F | 16×1 | |
+| Accel Enrich Adder vs ECT | 0x4660 | 16×1 | |
+| OXS Upswing | 0x4692 | 16×4 | Lambda |
+| Knock Retard Rate | 0x46A2 | 16×1 | |
+| Knock Decay Rate | 0x46B2 | 16×1 | |
+| OXS Downswing | 0x46D2 | 16×4 | Lambda |
+| OXS Decay Interval | 0x4712 | 16×1 | |
+| Startup ISV vs ECT | 0x4722 | 16×1 | |
+| Idle RPM Scalar | 0x4733 | 16×1 | |
+| Boost Cut (No Knock) | 0x481C | 16×1 | |
+| Boost Cut (Knock) | 0x482D | 17×1 | |
+| ISV Boost Control | 0x483E | 16×1 | |
+| WOT Fuel | 0x484E | 16×1 | |
+| Idle Ignition | 0x485F | 16×1 | |
+| CO Adjust vs MAP | 0x486F | 16×1 | |
+| WOT Initial Enrichment | 0x4880 | 9×5 | |
+| Ignition vs IAT | 0x48AD | 16×1 | |
+| **Rev Limit** | **0x4456** | 16-bit | `30,000,000 / 16bit = RPM` |
+
