@@ -328,27 +328,43 @@ class DetectionResult:
 
 _CE00C8 = bytes([0xCE, 0x00, 0xC8])   # LDX #200
 _CE00FA = bytes([0xCE, 0x00, 0xFA])   # LDX #250
+_C1C8   = bytes([0xC1, 0xC8])          # CMPB #200  (fallback — 32KB single-map ROMs)
+_C1FA   = bytes([0xC1, 0xFA])          # CMPB #250  (fallback — would indicate 250kPa)
 
 def detect_map_sensor(rom: bytes) -> tuple[int, str]:
     """
     Return (kpa: int, method: str) — 200 or 250 kPa.
 
-    Searches the ROM for the firmware constant that encodes the MAP sensor's
-    full-scale range.  Returns 200 if ambiguous / not found (safe default).
+    Primary:  scans for HD6303 opcode CE 00 C8 (LDX #200) or CE 00 FA (LDX #250)
+              — the ADC full-scale constant found in 64KB / extended ROMs.
+    Fallback: scans for C1 C8 (CMPB #200) or C1 FA (CMPB #250)
+              — used in 32KB single-map ROMs where the LDX pattern is absent.
+    Returns 200 if ambiguous / not found (safe default).
     """
-    n200 = sum(1 for i in range(len(rom) - 2)
-               if rom[i:i+3] == _CE00C8)
-    n250 = sum(1 for i in range(len(rom) - 2)
-               if rom[i:i+3] == _CE00FA)
+    # Primary: LDX immediate
+    n200_ldx = sum(1 for i in range(len(rom) - 2) if rom[i:i+3] == _CE00C8)
+    n250_ldx = sum(1 for i in range(len(rom) - 2) if rom[i:i+3] == _CE00FA)
 
-    if n200 > 0 and n250 == 0:
-        return 200, f"CE 00 C8 (LDX #200) found ×{n200} — 200 kPa sensor"
-    if n250 > 0 and n200 == 0:
-        return 250, f"CE 00 FA (LDX #250) found ×{n250} — 250 kPa sensor"
-    if n250 > 0 and n200 > 0:
-        # Both present — unusual; go with whichever appears more often
-        kpa = 250 if n250 >= n200 else 200
-        return kpa, f"Ambiguous: CE 00 C8 ×{n200}, CE 00 FA ×{n250} — defaulting to {kpa} kPa"
+    if n200_ldx > 0 and n250_ldx == 0:
+        return 200, f"CE 00 C8 (LDX #200) ×{n200_ldx} — 200 kPa sensor"
+    if n250_ldx > 0 and n200_ldx == 0:
+        return 250, f"CE 00 FA (LDX #250) ×{n250_ldx} — 250 kPa sensor"
+    if n250_ldx > 0 and n200_ldx > 0:
+        kpa = 250 if n250_ldx >= n200_ldx else 200
+        return kpa, f"Ambiguous LDX: ×{n200_ldx} C8, ×{n250_ldx} FA — defaulting {kpa} kPa"
+
+    # Fallback: CMPB immediate (32KB single-map ROMs)
+    n200_cmp = sum(1 for i in range(len(rom) - 1) if rom[i:i+2] == _C1C8)
+    n250_cmp = sum(1 for i in range(len(rom) - 1) if rom[i:i+2] == _C1FA)
+
+    if n200_cmp > 0 and n250_cmp == 0:
+        return 200, f"C1 C8 (CMPB #200) ×{n200_cmp} — 200 kPa sensor"
+    if n250_cmp > 0 and n200_cmp == 0:
+        return 250, f"C1 FA (CMPB #250) ×{n250_cmp} — 250 kPa sensor"
+    if n250_cmp > 0 and n200_cmp > 0:
+        kpa = 250 if n250_cmp >= n200_cmp else 200
+        return kpa, f"Ambiguous CMPB: ×{n200_cmp} C8, ×{n250_cmp} FA — defaulting {kpa} kPa"
+
     # Neither found (e.g. Mk2 or very different firmware)
     return 200, "MAP sensor constant not found — assuming 200 kPa (default)"
 
