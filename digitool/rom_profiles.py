@@ -105,6 +105,39 @@ KNOWN_CRCS: Dict[int, dict] = {
         variant=VARIANT_G40_MK2,    label="Polo G40 Mk2 (stock)",
         cal="STOCK",  rev_addr=None,  family=MAP_FAMILY_MK2,    rpm_limit=None,
     ),
+    # ── G60 single-map known tunes ───────────────────────────────────────────
+    # Theibach RS G60 — read from 27C512 chip (filename suffix indicates chip read)
+    # 398 bytes changed vs Golf G60 stock. Hex-editor tune, no tuner string found.
+    #   Ignition: uniformly advanced +5–6° at low/mid load, +10–12° at high load rows 10–15
+    #   Fuel: leaner mid-range rows 9–12 (-7–9 raw), richer low-load rows 2–7
+    #   IAT compensation: slightly reduced (less IAT pullback)
+    #   Warm-up enrichment: slightly reduced
+    #   OXS upswing: lambda response reshaped
+    #   Firmware: 64 bytes of scattered constant tweaks (ISV thresholds, lambda scalars)
+    #   Rev limit: 6201→7133 RPM
+    0x52f186c4: dict(
+        variant=VARIANT_G60,        label="Theibach RS G60 (27C512 chip read)",
+        cal="TUNED",  rev_addr=0x4BF2, family=MAP_FAMILY_SINGLE, rpm_limit=7133,
+    ),
+    # SNS Tuning Stage 5 G60 — Copyright (C) 2002 SNStuning.com (same tuner as G40 SNS tune)
+    # 3065 bytes changed vs Golf G60 stock. Heavy tune with injected firmware routines.
+    #   Ignition: modest advance +1–2° avg across whole map (conservative for "Stage 5" label)
+    #   Fuel: large lean rows 3–7 mid-load (-16 to -28 raw avg) — likely injector rescaling or
+    #         aggressive lean cruise; richer rows 9–11 high load (+5 raw)
+    #   Boost cut (no-knock): raised 30–42 kPa → 50–75 kPa (more boost allowed before cut)
+    #   Boost cut (knock): raised 130–150 kPa → 145–170 kPa
+    #   WOT enrichment: heavily increased across all cols (24–42 raw → 42–58 raw)
+    #   CO adj vs MAP: fully remapped, rich correction active at low/mid MAP
+    #   OXS downswing: slowed (slower lean correction response)
+    #   Injector lag: raised at upper entries (+22 raw) — suggests larger injectors
+    #   Idle ign high limit: raised in upper 3 entries (+13–28 raw)
+    #   Firmware: 2524 bytes incl. large contiguous rewrites at 0x4E41–0x547D and 0x5E00–0x6006
+    #   SNS code injected at 0x56F0–0x5740 (fill area); string: "Copyright (C) 2002 SNStuning.com"
+    #   Rev limit: 6201→7000 RPM
+    0x735d3735: dict(
+        variant=VARIANT_G60,        label="SNS Tuning Stage 5 G60 (2002)",
+        cal="TUNED",  rev_addr=0x4BF2, family=MAP_FAMILY_SINGLE, rpm_limit=7000,
+    ),
     # ── G40 Mk3 known tunes (SNS Tuning, YOU54F reference files) ─────────────
     0xe653d271: dict(
         variant=VARIANT_G40,        label="Polo G40 Mk3 — SNS WOT/Idle Lambda + 7812 RPM",

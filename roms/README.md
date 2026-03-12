@@ -18,19 +18,27 @@ Provided for reference, comparison, and tuning education purposes only.
 | `G40_Mk2_StockEprom.BIN` | VW Polo G40 Mk2 | — | unknown | `0xbf9d8fef` |
 
 > **Missing stock ROMs** — PRs welcome for verified dumps of:
-> G60 Triple-Map stock (`0x1b198171`), Corrado SLS (`0x2cbd1e7a`)
+> G60 Triple-Map stock (`0x1b198171`)
 
 ---
 
 ## Known Tune ROMs
 
-Reference tunes from YOU54F's PoloG40Digifant repo — useful for patch detection verification.
+### G60 Single-Map Tunes
 
-| File | Base | Changes | Rev Limit | CRC32 |
-|------|------|---------|-----------|-------|
-| `G40_StockEprom_with7kRevLimit.BIN` | G40 Mk3 stock | Rev limit only | 6995 RPM | `0xc662e1e9` |
-| `G40_StockEprom_withWOTidleLambdaMods.BIN` | G40 Mk3 stock | SNS lambda patches + rev limit | 7812 RPM | `0xe653d271` |
-| `G40_EubelTuningInGifhorn1995_MinorFuelTimingChanges_BoostCutRemoval_IdleIgnition.BIN` | G40 Mk3 stock | Ignition advance, boost cut removal, rev limit | 6848 RPM | `0xad0c5304` |
+| File | Base | Tuner | Changes | Rev Limit | CRC32 |
+|------|------|-------|---------|-----------|-------|
+| `corradoSLS.BIN` | G60 Triple-Map | Unknown | Rev limit only (stock cal otherwise) | 7001 RPM | `0x2cbd1e7a` |
+| `Theibach_RS_G60_mit_27c512_gelesen.bin` | G60 single-map | Unknown (hex editor) | Ignition +5–12° across full map, fuel/IAT/OXS trim, rev limit | 7133 RPM | `0x52f186c4` |
+| `STAGE_5_G60.BIN` | G60 single-map | **SNS Tuning 2002** | Heavy tune: fuel rescale, boost raised, WOT enrich, firmware rewrites + injected code | 7000 RPM | `0x735d3735` |
+
+### G40 Mk3 Tunes
+
+| File | Base | Tuner | Changes | Rev Limit | CRC32 |
+|------|------|-------|---------|-----------|-------|
+| `G40_StockEprom_with7kRevLimit.BIN` | G40 Mk3 stock | Unknown | Rev limit only | 6995 RPM | `0xc662e1e9` |
+| `G40_StockEprom_withWOTidleLambdaMods.BIN` | G40 Mk3 stock | **SNS Tuning 2003** | Lambda patches (WOT + idle gates injected into fill area) + rev limit | 7812 RPM | `0xe653d271` |
+| `G40_EubelTuningInGifhorn1995_MinorFuelTimingChanges_BoostCutRemoval_IdleIgnition.BIN` | G40 Mk3 stock | **Eubel Tuning Gifhorn** | Ignition advance, boost cut removal, rev limit | 6848 RPM | `0xad0c5304` |
 
 
 ---
@@ -106,7 +114,52 @@ The boost cut table also extends two entries earlier than our current map defini
 
 ---
 
-## MAP Sensor Detection
+## Theibach RS G60 Analysis (vs Golf/Corrado G60 PG)
+
+File name indicates it was read from a 27C512 chip (`mit_27c512_gelesen` = "read with 27C512").
+No tuner string found in the fill area — likely edited with a hex editor directly.
+**398 bytes changed vs Golf G60 stock.**
+
+| Region | Changes | Detail |
+|--------|---------|--------|
+| Ignition Map | 180 cells | Uniform +5–6° advance at low/mid load rows 0–6; rising to +10–12° at high-load rows 10–15. Classic full-map timing advance tune |
+| Fuel Map | 124 cells | Leaner mid-range rows 9–12 (-7 to -9 raw avg); richer low-load rows 2–7 (+3 to +15) |
+| IAT Compensation | 16 entries | Trimmed down — slightly less fuel pullback under charge air heat |
+| Warm-up Enrichment | 2 bytes | Reduced at top two ECT entries (-4 raw) |
+| ECT Compensation 1 | 2 bytes | Reduced at first two entries (-7 raw) |
+| Hot Start Enrichment | 2 bytes | Reduced (less post-hot-start enrichment) |
+| OXS Upswing | 6 bytes | Lambda curve reshaped — upswing response slightly faster in upper rows |
+| Rev Limit | 2 bytes | 6201 → **7133 RPM** |
+| Firmware | 64 bytes | Scattered 1–4 byte constant tweaks: ISV thresholds, lambda scalars — no injected code |
+
+---
+
+## SNS Tuning Stage 5 G60 Analysis (2002)
+
+SNS Tuning copyright string confirmed in fill area at `0x56F0`: `"Copyright (C) 2002 SNStuning.com"`.
+Same tuner as the G40 SNS lambda tune (2003). **3065 bytes changed vs Golf G60 stock.**
+
+| Region | Changes | Detail |
+|--------|---------|--------|
+| Ignition Map | 188 cells | Modest overall advance (+1–2° avg) across full map — conservative given "Stage 5" marketing |
+| Fuel Map | 215 cells | Large lean at rows 3–7 mid-load (-16 to -28 raw avg); richer rows 9–11 high load (+5). Pattern consistent with injector rescaling for larger injectors |
+| Injector Lag | 2 bytes | +22 raw at upper two ECT entries — larger injectors need longer lag compensation |
+| Boost Cut (no-knock) | 14 bytes | Raised 30–42 kPa → 50–75 kPa — significantly more boost permitted before fuel cut |
+| Boost Cut (knock) | 10 bytes | Raised 130–150 kPa → 145–170 kPa — cut threshold raised under knock conditions too |
+| WOT Enrichment | 15 bytes | Heavily increased all columns: 24–42 raw → 42–58 raw |
+| CO Adj vs MAP | 13 bytes | Fully remapped; rich bias active at low/mid MAP (AFR tuning at cruise) |
+| OXS Downswing | 6 bytes | Significantly slowed (-16 to -69 raw) — slower lean correction after rich event |
+| Idle Ign High Limit | 3 bytes | Upper entries raised +13–28 raw — wider ignition authority at idle |
+| RPM Scalar entry 0 | 1 byte | 10201 → 10501 RPM (axis stretch for extended powerband) |
+| Startup ISV vs ECT | 9 bytes | ISV duty vs coolant temp reshaped |
+| Firmware (code) | 2524 bytes | Large rewrites at `0x4E41–0x547D` and `0x5E00–0x6006`; scattered single-byte calibration constants throughout |
+| SNS injected code | ~80 bytes | Routines injected into fill area at `0x56F0–0x5740`, `0x5800–0x5810`, `0x5820–0x5839`, `0x5840–0x5852`, `0x5860–0x5872`, `0x5880–0x588F` |
+| Checksum area | 17 bytes | `0x7FA0–0x7FBF` → all `0xFF` (erased/unused, not a calibration checksum region) |
+| Rev Limit | 2 bytes | 6201 → **7000 RPM** |
+
+---
+
+
 
 DigiTool auto-detects the MAP sensor range from the firmware's ADC scaling constant.
 
