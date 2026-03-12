@@ -1,60 +1,132 @@
-name: Build DigifantTool
+name: Build DigifantTool Windows EXE
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    outputs:
+      exe_name: ${{ steps.ver.outputs.exe }}
+      version: ${{ steps.ver.outputs.num }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: Install dependencies
-        run: pip install pywebview pyinstaller
-      - name: Build EXE
+          python-version: "3.11"
+
+      - name: Read app version
+        id: ver
+        shell: python
         run: |
-          python -m PyInstaller --onefile --windowed --name DigifantTool --distpath dist --add-data "app/DigifantTool.html;app" --hidden-import "webview.platforms.winforms" --hidden-import "pythonnet" desktop/main.py
-      - name: Upload artifact
+          import re, os
+          txt = open("desktop/version.py").read()
+          v = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', txt).group(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+            f.write(f"num={v}\n")
+            f.write(f"exe=DigifantTool-v{v}\n")
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pywebview pyinstaller
+
+      - name: Build EXE with PyInstaller
+        working-directory: desktop
+        run: |
+          pyinstaller `
+            --onefile `
+            --windowed `
+            --name "${{ steps.ver.outputs.exe }}" `
+            --add-data "..\app\DigifantTool.html;app" `
+            --hidden-import "webview.platforms.winforms" `
+            --hidden-import "clr" `
+            main.py
+
+      - name: Verify EXE
+        run: dir desktop\dist\
+
+      - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: DigifantTool-Windows
-          path: dist/DigifantTool.exe
+          path: desktop/dist/${{ steps.ver.outputs.exe }}.exe
+          retention-days: 90
 
-  build-linux:
+  create-release:
+    needs: build-windows
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download EXE
+        uses: actions/download-artifact@v4
         with:
-          python-version: '3.12'
-      - name: Install system deps
-        run: sudo apt-get install -y python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.0 libgtk-3-dev libwebkit2gtk-4.0-dev
-      - name: Install dependencies
-        run: pip install pywebview pyinstaller
-      - name: Build binary
+          name: DigifantTool-Windows
+          path: dist/
+
+      - name: Get short commit SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Delete existing latest release
         run: |
-          python -m PyInstaller --onefile --name DigifantTool --distpath dist --add-data "app/DigifantTool.html:app" --hidden-import "webview.platforms.gtk" desktop/main.py
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DigifantTool-Linux
-          path: dist/DigifantTool
+          gh release delete latest --yes || true
+          git push origin :refs/tags/latest || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release:
-    needs: [build-windows, build-linux]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - uses: actions/download-artifact@v4
-      - name: Create Release
+      - name: Create rolling latest release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            DigifantTool-Windows/DigifantTool.exe
-            DigifantTool-Linux/DigifantTool
+          tag_name: latest
+          name: "DigifantTool v${{ needs.build-windows.outputs.version }} — Latest Build"
+          body: |
+            ## DigifantTool v${{ needs.build-windows.outputs.version }}
+
+            **Commit:** `${{ steps.sha.outputs.short }}` — ${{ github.event.head_commit.message }}
+
+            ### Download & Run — No Install Needed
+            Just download `DigifantTool-v${{ needs.build-windows.outputs.version }}.exe` and run it.
+            No Python, no browser required. Drag your `.BIN` ROM file into the app.
+
+            ### Features
+            - 🔥 Ignition Map — 16×16 heatmap, °BTDC decoded per cell
+            - ⛽ Fuel Map — 16×16 heatmap
+            - 🌀 Boost Cut & ISV control tables
+            - ⚙ Warmup, ECT, IAT, Knock corrections
+            - ⊕ ROM Diff/Compare — byte-by-byte with map region tagging
+            - ⚑ G60 Code Flag detection (Digilag, Open Loop Lambda, ISV disable)
+            - 〒 Hex viewer with region labels + jump-to-address
+            - ↓ Rev Limit editor — enter RPM, exports modified BIN
+
+            ### Supported ECUs
+            | ECU | Chip |
+            |-----|------|
+            | VW Corrado G60 (PG engine) | 27C256 (32KB) |
+            | VW Polo G40 | 27C256 (32KB) |
+            | VW Golf/Jetta G60 | 27C256 (32KB) |
+
+            ### Formula Reference
+            - Ignition: `(210 - byte) / 2.86 = °BTDC`
+            - Rev Limit: `30,000,000 / 16bit_word = RPM`
+
+            ---
+            *VW Digifant 1 G60/G40 ECU Editor*
+          files: dist/${{ needs.build-windows.outputs.exe_name }}.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
