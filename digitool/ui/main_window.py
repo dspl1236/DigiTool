@@ -256,13 +256,32 @@ class MainWindow(QMainWindow):
         return rom
 
     def _save_rom(self):
-        if self._rom is None or self._rom_path is None:
+        if self._rom is None:
             return
+
+        # Suggest a filename: original stem + "_edited.bin"
+        base = ""
+        if self._rom_path:
+            stem = os.path.splitext(os.path.basename(self._rom_path))[0]
+            base = (stem + ".bin") if stem.endswith("_edited") else (stem + "_edited.bin")
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save 27C256 ROM (32 KB)", base,
+            "BIN Files (*.bin *.BIN);;All Files (*)"
+        )
+        if not path:
+            return
+
         self._rom = self._collect_rom()
         try:
-            with open(self._rom_path, "wb") as f:
+            with open(path, "wb") as f:
                 f.write(self._rom)
-            self.statusbar.showMessage(f"Saved: {self._rom_path}", 4000)
+            self._rom_path = path
+            short = os.path.basename(path)
+            self.lbl_rom_name.setText(
+                f"{short}  \u00b7  {self._result.label}" if self._result else short
+            )
+            self.statusbar.showMessage(f"Saved: {path}", 4000)
         except OSError as e:
             QMessageBox.critical(self, "Save Error", str(e))
 
