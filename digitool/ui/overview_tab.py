@@ -123,6 +123,17 @@ class OverviewTab(QWidget):
 
         vl.addWidget(self.lbl_variant)
         vl.addWidget(self.lbl_crc)
+
+        self.lbl_note = QLabel("")
+        self.lbl_note.setWordWrap(True)
+        self.lbl_note.setStyleSheet(
+            "color: #e8b84b; font-size: 11px; font-style: italic; "
+            "background: #1a2010; border-left: 3px solid #e8b84b; "
+            "padding: 6px 8px; margin-top: 4px;"
+        )
+        self.lbl_note.setVisible(False)
+        vl.addWidget(self.lbl_note)
+
         root.addWidget(grp_var)
 
         # ── Rev limit ────────────────────────────────────────────────────────
@@ -236,6 +247,14 @@ class OverviewTab(QWidget):
         self.lbl_cal.setText(result.cal if result.cal else "UNKNOWN")
         self.lbl_conf.setText(result.confidence)
         self.lbl_crc.setText(f"CRC32: {result.crc32:#010x}")
+
+        # ROM note (e.g. factory-special context)
+        note = result.raw.get("note", "") if result.raw else ""
+        if note:
+            self.lbl_note.setText(note)
+            self.lbl_note.setVisible(True)
+        else:
+            self.lbl_note.setVisible(False)
 
         # Cal colour
         cal_color = "#2dff6e" if result.is_known_stock else "#e8b84b"

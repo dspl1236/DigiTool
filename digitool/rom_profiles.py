@@ -51,7 +51,7 @@ import zlib
 
 VARIANT_G60         = "G60"
 VARIANT_G60_PASSAT  = "G60_PASSAT"
-VARIANT_G60_16V     = "G60_16V"
+VARIANT_G60_16V     = "G60_16V_LIMITED"
 VARIANT_G60_TRIPLE  = "G60_TRIPLE"
 VARIANT_G40         = "G40"
 VARIANT_G40_MK2     = "G40_MK2"
@@ -60,7 +60,7 @@ VARIANT_UNKNOWN     = "UNKNOWN"
 VARIANT_LABELS = {
     VARIANT_G60:        "G60 Corrado / Golf / Jetta",
     VARIANT_G60_PASSAT: "G60 Passat Syncro",
-    VARIANT_G60_16V:    "G60 16v Limited",
+    VARIANT_G60_16V:    "Golf G60 Limited (71 built)",
     VARIANT_G60_TRIPLE: "G60 Triple-Map",
     VARIANT_G40:        "G40 Polo Mk3",
     VARIANT_G40_MK2:    "G40 Polo Mk2",
@@ -86,8 +86,11 @@ KNOWN_CRCS: Dict[int, dict] = {
         cal="STOCK",  rev_addr=0x4BF2, family=MAP_FAMILY_SINGLE, rpm_limit=6250,
     ),
     0x65550fd6: dict(
-        variant=VARIANT_G60_16V,    label="G60 16v Limited",
-        cal="STOCK",  rev_addr=0x4BF2, family=MAP_FAMILY_SINGLE, rpm_limit=7000,
+        variant=VARIANT_G60_16V,    label="Golf G60 Limited (16v, 71 built)",
+        cal="TUNED",  rev_addr=0x4BF2, family=MAP_FAMILY_SINGLE, rpm_limit=7000,
+        note="Factory motorsport/homologation ROM. 1.8L 16v head + G60 supercharger + Syncro AWD. "
+             "Digilag removed at factory level (0x6342/0x6347 zeroed). "
+             "Only 71 units built. Maps tuned for 16v head — not compatible with standard 8v G60.",
     ),
     0x1b198171: dict(
         variant=VARIANT_G60_TRIPLE, label="G60 Triple-Map (stock)",
@@ -382,6 +385,7 @@ class DetectionResult:
     crc32:          int = 0
     warnings:       list = field(default_factory=list)
     map_sensor_kpa: int = 200    # 200 or 250 — detected from firmware constant
+    raw:            Optional[dict] = None   # full profile dict from CRC table, if matched
 
     @property
     def is_known_stock(self) -> bool:
@@ -609,6 +613,7 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
             rpm_limit=k.get("rpm_limit"),
             crc32=crc,
             map_sensor_kpa=sensor_kpa,
+            raw=k,
         )
 
     # 2. Reset vector
