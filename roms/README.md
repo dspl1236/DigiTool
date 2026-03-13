@@ -24,13 +24,13 @@ VW/Bosch factory firmware is copyright Bosch GmbH / Volkswagen AG.
 
 ## Stock ROMs
 
-| File | Application | Rev Limit | MAP Sensor | CRC32 |
-|------|-------------|-----------|------------|-------|
-| `G60_PG_StockEprom_022B93EE.BIN` | Corrado G60 / Golf G60 / Jetta G60 (PG engine) | 6201 RPM | 200 kPa | `0x8c6fec45` |
-| `PASSG60.BIN` | Passat G60 Syncro | 6250 RPM | 200 kPa | `0xb6367c2f` |
-| `limited_16v_G60.BIN` | G60 16v Limited (1.8 16v supercharged) | 7000 RPM | 200 kPa | `0x65550fd6` |
-| `G40_StockEprom.BIN` | VW Polo G40 Mk3 | 6601 RPM | 200 kPa | `0xb2bec49d` |
-| `G40_Mk2_StockEprom.BIN` | VW Polo G40 Mk2 | — | unknown | `0xbf9d8fef` |
+| File | Application | Rev Limit | MAP Sensor | Chip | CRC32 |
+|------|-------------|-----------|------------|------|-------|
+| `G60_PG_StockEprom_022B93EE.BIN` | Corrado G60 / Golf G60 / Jetta G60 (PG engine) | 6201 RPM | 200 kPa | 27C256 | `0x8c6fec45` |
+| `PASSG60.BIN` | Passat G60 Syncro | 6250 RPM | 200 kPa | 27C256 | `0xb6367c2f` |
+| `limited_16v_G60.BIN` | G60 16v Limited (1.8 16v supercharged) | 7000 RPM | 200 kPa | 27C256 | `0x65550fd6` |
+| `G40_StockEprom.BIN` | VW Polo G40 Mk3 | 6601 RPM | 200 kPa | 27C256 | `0xb2bec49d` |
+| `G40_Mk2_StockEprom.BIN` | VW Polo G40 Mk2 | — | unknown | 27C256 | `0xbf9d8fef` |
 
 > **Missing stock ROMs** — PRs welcome for verified dumps of:
 > G60 Triple-Map stock (`0x1b198171`)
@@ -41,19 +41,19 @@ VW/Bosch factory firmware is copyright Bosch GmbH / Volkswagen AG.
 
 ### G60 Single-Map Tunes
 
-| File | Base | Tuner | Changes | Rev Limit | CRC32 |
-|------|------|-------|---------|-----------|-------|
-| `corradoSLS.BIN` | G60 Triple-Map | Unknown | Rev limit only (stock cal otherwise) | 7001 RPM | `0x2cbd1e7a` |
-| `Theibach_RS_G60_mit_27c512_gelesen.bin` | G60 single-map | Unknown (hex editor) | Ignition +5–12° across full map, fuel/IAT/OXS trim, rev limit | 7133 RPM | `0x52f186c4` |
-| `STAGE_5_G60.BIN` | G60 single-map | **SNS Tuning 2002** | Heavy tune: fuel rescale, boost raised, WOT enrich, firmware rewrites + injected code | 7000 RPM | `0x735d3735` |
+| File | Base | Tuner | Changes | Rev Limit | Chip | CRC32 |
+|------|------|-------|---------|-----------|------|-------|
+| `corradoSLS.BIN` | G60 Triple-Map | Unknown | Rev limit only (stock cal otherwise) | 7001 RPM | 27C256 | `0x2cbd1e7a` |
+| `Theibach_RS_G60_mit_27c512_gelesen.bin` | G60 single-map | Unknown (hex editor) | Ignition +5–12° across full map, fuel/IAT/OXS trim, rev limit | 7133 RPM | **27C512** (read as 32KB) | `0x52f186c4` |
+| `STAGE_5_G60.BIN` | G60 single-map | **SNS Tuning 2002** | Heavy tune: fuel rescale, boost raised, WOT enrich, firmware rewrites + injected code | 7000 RPM | 27C256 | `0x735d3735` |
 
 ### G40 Mk3 Tunes
 
-| File | Base | Tuner | Changes | Rev Limit | CRC32 |
-|------|------|-------|---------|-----------|-------|
-| `G40_StockEprom_with7kRevLimit.BIN` | G40 Mk3 stock | Unknown | Rev limit only | 6995 RPM | `0xc662e1e9` |
-| `G40_StockEprom_withWOTidleLambdaMods.BIN` | G40 Mk3 stock | **SNS Tuning 2003** | Lambda patches (WOT + idle gates injected into fill area) + rev limit | 7812 RPM | `0xe653d271` |
-| `G40_EubelTuningInGifhorn1995_MinorFuelTimingChanges_BoostCutRemoval_IdleIgnition.BIN` | G40 Mk3 stock | **Eubel Tuning Gifhorn** | Ignition advance, boost cut removal, rev limit | 6848 RPM | `0xad0c5304` |
+| File | Base | Tuner | Changes | Rev Limit | Chip | CRC32 |
+|------|------|-------|---------|-----------|------|-------|
+| `G40_StockEprom_with7kRevLimit.BIN` | G40 Mk3 stock | Unknown | Rev limit only | 6995 RPM | 27C256 | `0xc662e1e9` |
+| `G40_StockEprom_withWOTidleLambdaMods.BIN` | G40 Mk3 stock | **SNS Tuning 2003** | Lambda patches (WOT + idle gates injected into fill area) + rev limit | 7812 RPM | 27C256 | `0xe653d271` |
+| `G40_EubelTuningInGifhorn1995_MinorFuelTimingChanges_BoostCutRemoval_IdleIgnition.BIN` | G40 Mk3 stock | **Eubel Tuning Gifhorn** | Ignition advance, boost cut removal, rev limit | 6848 RPM | **27C512** (mirrored, stored as 32KB upper half) | `0xad0c5304` |
 
 
 ---

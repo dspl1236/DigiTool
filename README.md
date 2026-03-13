@@ -3,7 +3,7 @@
 **Digifant 1 ECU ROM Editor** — for VW/Audi G60 and G40 Digifant-1 ECUs (Corrado G60, Polo G40, PG-engine variants)
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Mac-blue)
-![ROM](https://img.shields.io/badge/ROM-27C256%2032KB-yellow)
+![ROM](https://img.shields.io/badge/ROM-27C256%2F27C512-yellow)
 ![ECU](https://img.shields.io/badge/ECU-Digifant--1%20G60%2FG40-orange)
 [![Build Windows EXE](https://github.com/dspl1236/DigifantTool/actions/workflows/build.yml/badge.svg)](https://github.com/dspl1236/DigifantTool/actions/workflows/build.yml)
 
@@ -19,25 +19,61 @@ No install required. Just download and run.
 
 - 🔥 **Ignition Map** — 16×16 heatmap, click any cell for °BTDC decoded value
 - ⛽ **Fuel Map** — 16×16 heatmap with raw byte inspection
-- 🌀 **Boost & ISV** — Boost cut (no-knock + knock), ISV control, WOT enrichment
-- ⚙ **Corrections** — Warmup, ECT, IAT, knock retard, coil dwell, accel enrichment
+- 🌀 **Boost & ISV** — Boost cut (no-knock + knock), ISV control, WOT enrichment, CO adj
+- 🔩 **Knock & Dwell** — Knock multiplier, retard/decay rates, coil dwell, idle ignition limits
+- 💧 **Fuel Corrections** — Warmup, ECT ×2, IAT, startup, hot start, battery comp, injector lag, accel enrich ×3, OXS up/downswing
 - ⊕ **ROM Compare/Diff** — Byte-by-byte diff with map region tagging and delta
 - ⚑ **ROM Detection** — Auto-identifies variant, calibration status, MAP sensor range (200 vs 250 kPa)
-- ⚑ **G60 Code Flags** — Auto-detects Digilag disable, Open Loop Lambda, ISV disable patches
+- ⚑ **Code Patches** — Auto-detects Digilag disable, Open Loop Lambda, ISV disable, SNS lambda gates
 - 〒 **Hex View** — Full raw hex with region labels, jump-to-address/region
 - ↓ **Rev Limit Editor** — Enter target RPM → calculates bytes → exports modified BIN
-- ↓ **27C512 Export** — Mirrors 32KB ROM to 64KB for 27C512/27SF512 chips
+- ↓ **27C512 Export** — Mirrors 32KB ROM to 64KB for direct 27C512/27SF512 burning
 
 ## Supported ECUs
 
 | ECU | Chip | Notes |
 |-----|------|-------|
-| VW Corrado G60 (PG engine) | 27C256 (32KB) | Primary target |
-| VW Polo G40 Mk3 | 27C256 (32KB) | Same firmware family |
-| VW Golf / Jetta G60 | 27C256 (32KB) | Compatible |
-| VW Passat G60 Syncro | 27C256 (32KB) | Compatible |
-| G60 Triple-Map variants | 27C256 (32KB) | Corrado SLS, SNS tunes |
-| VW Polo G40 Mk2 | 27C256 (32KB) | Earlier ECU, map offsets differ |
+| VW Corrado G60 (PG engine) | 27C256 / 27C512 | Primary target |
+| VW Polo G40 Mk3 | 27C256 / 27C512 | Same firmware family |
+| VW Golf / Jetta G60 | 27C256 / 27C512 | Compatible |
+| VW Passat G60 Syncro | 27C256 / 27C512 | Compatible |
+| G60 Triple-Map variants | 27C256 / 27C512 | Corrado SLS, SNS tunes |
+| VW Polo G40 Mk2 | 27C256 | Earlier ECU, map offsets differ |
+
+## ROM File Loading
+
+DigiTool accepts any of the following file sizes — it normalizes automatically:
+
+| File size | What it is | What DigiTool does |
+|-----------|-----------|-------------------|
+| 32 KB (32,768 bytes) | Standard 27C256 dump or half of a 27C512 | Load directly |
+| 64 KB — both halves identical | 27C512 mirrored dump | Use lower half |
+| 64 KB — upper half all `0xFF` | Programmer wrote ROM to lower half | Use lower half |
+| 64 KB — lower half all `0xFF` | Programmer wrote ROM to upper half | Use upper half |
+| 64 KB — halves differ | Non-standard 27C512 write | Pick half with known reset vector |
+| < 32 KB | Partial dump | Pad to 32 KB with `0xFF`, warn |
+| 256 bytes | Single map page | Pad and warn — maps will be incomplete |
+
+If the file is a 64 KB chip read, DigiTool will show a brief message explaining which half it used before loading. The 32 KB ROM that's loaded is what gets edited and saved — the 27C512 export always re-mirrors it back to 64 KB.
+
+## EPROM Burning
+
+**Recommended chip: 27C512** (available cheaply from AliExpress, eBay, etc.)
+
+The Digifant 1 ECU uses only address lines A0–A14 (15 bits = 32 KB). A15 is ignored by the ECU's address decoder, so both halves of a 27C512 are accessible identically. This means:
+
+- A 27C512 with the 32 KB ROM mirrored in both halves works perfectly
+- It doesn't matter which half the programmer wrote to
+- DigiTool's **Save 27C512 .bin** button produces a ready-to-burn 64 KB image (32 KB × 2)
+
+**Workflow:**
+1. Edit your ROM in DigiTool
+2. Click **Save 27C512 .bin** → saves a 64 KB mirrored image
+3. Open your programmer (TL866, T48, etc.) in **27C512 mode**
+4. Write the 64 KB file to the chip
+5. Done — both halves are identical, ECU reads either one
+
+27C256 chips work too if you have them — use **Save .bin** (32 KB) and program in 27C256 mode.
 
 ## Map Locations (G60 PG / G40 Mk3)
 
