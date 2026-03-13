@@ -169,8 +169,9 @@ class MainWindow(QMainWindow):
     def _save_rom(self):
         if self._rom is None or self._rom_path is None:
             return
-        # Write back pending map edits
+        # Write back pending map edits (maps + all 1D corrections)
         self._rom = bytearray(self.tab_maps.write_back())
+        self._rom = bytearray(self.tab_corrections.write_back(self._rom))
         try:
             with open(self._rom_path, "wb") as f:
                 f.write(self._rom)
@@ -187,6 +188,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         self._rom = bytearray(self.tab_maps.write_back())
+        self._rom = bytearray(self.tab_corrections.write_back(self._rom))
         try:
             with open(path, "wb") as f:
                 f.write(self._rom)
@@ -211,6 +213,7 @@ class MainWindow(QMainWindow):
 
         # Collect any pending map edits; fall back to current ROM if nothing changed
         written = self.tab_maps.write_back()
+        written = self.tab_corrections.write_back(bytearray(written))
         rom_32k = bytes(written) if written else bytes(self._rom)
 
         if len(rom_32k) != 0x8000:

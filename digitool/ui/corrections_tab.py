@@ -1,12 +1,13 @@
 """
 ui/corrections_tab.py
 1D correction / scalar tables: warmup enrichment, ECT, IAT, boost cut, etc.
+All tables are editable — changes write through to the shared ROM bytearray in-place.
 """
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
-    QGroupBox, QLabel, QTableWidget, QTableWidgetItem,
-    QHeaderView, QSizePolicy, QFrame
+    QLabel, QTableWidget, QTableWidgetItem,
+    QHeaderView, QFrame
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QBrush
@@ -27,11 +28,13 @@ def _heat(val: int, lo: int, hi: int) -> QColor:
 
 
 class _Table1D(QWidget):
-    """Single 1D table display (N×1 or N×M collapsed to 1D)."""
+    """Single 1D table — editable, writes through to shared ROM bytearray."""
 
     def __init__(self, map_def: MapDef, parent=None):
         super().__init__(parent)
         self._map_def = map_def
+        self._rom: bytearray | None = None
+
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(2)
@@ -50,9 +53,13 @@ class _Table1D(QWidget):
         self.table.setFont(QFont("Consolas", 10))
         root.addWidget(self.table)
 
-    def load(self, rom: bytes):
-        md   = self._map_def
-        start = md.data_addr   # ECU address = file offset directly
+        self.table.itemChanged.connect(self._on_item_changed)
+
+    def load(self, rom: bytearray):
+        self._rom = rom
+        md = self._map_def
+        start = md.data_addr
+
         data = []
         for i in range(md.size):
             try:
@@ -67,21 +74,78 @@ class _Table1D(QWidget):
                 val = data[r * md.cols + c]
                 item = QTableWidgetItem(str(val))
                 item.setTextAlignment(Qt.AlignCenter)
-                bg = _heat(val, lo, hi)
-                item.setBackground(QBrush(bg))
+                item.setBackground(QBrush(_heat(val, lo, hi)))
                 item.setForeground(QBrush(QColor("#e0eaf2")))
                 self.table.setItem(r, c, item)
         self.table.blockSignals(False)
+
+    def _on_item_changed(self, item: QTableWidgetItem):
+        """Validate and write changed cell back to the shared ROM bytearray."""
+        if self._rom is None:
+            return
+        try:
+            val = int(item.text())
+        except ValueError:
+            self._revert_cell(item)
+            return
+
+        if not (0 <= val <= 255):
+            self._revert_cell(item)
+            return
+
+        r, c = item.row(), item.column()
+        offset = self._map_def.data_addr + r * self._map_def.cols + c
+        if offset < len(self._rom):
+            self._rom[offset] = val
+
+        # Recolor based on new range
+        all_vals = [self._rom[self._map_def.data_addr + i] for i in range(self._map_def.size)]
+        lo, hi = min(all_vals), max(all_vals)
+        self.table.blockSignals(True)
+        item.setBackground(QBrush(_heat(val, lo, hi)))
+        item.setForeground(QBrush(QColor("#e0eaf2")))
+        self.table.blockSignals(False)
+
+    def _revert_cell(self, item: QTableWidgetItem):
+        """Revert a cell to the current ROM value after bad input."""
+        if self._rom is None:
+            return
+        r, c = item.row(), item.column()
+        offset = self._map_def.data_addr + r * self._map_def.cols + c
+        if offset < len(self._rom):
+            self.table.blockSignals(True)
+            item.setText(str(self._rom[offset]))
+            self.table.blockSignals(False)
+
+    def write_back(self, rom: bytearray) -> bytearray:
+        """Write current table values into the given ROM bytearray."""
+        md = self._map_def
+        self.table.blockSignals(True)
+        for r in range(md.rows):
+            for c in range(md.cols):
+                item = self.table.item(r, c)
+                if item is None:
+                    continue
+                try:
+                    val = max(0, min(255, int(item.text())))
+                except ValueError:
+                    continue
+                offset = md.data_addr + r * md.cols + c
+                if offset < len(rom):
+                    rom[offset] = val
+        self.table.blockSignals(False)
+        return rom
 
 
 class CorrectionsTab(QWidget):
     """
     Scrollable view of all 1D correction/scalar maps for the loaded ROM.
-    Shows everything except the main ignition and fuel 16×16 maps.
+    All tables are editable and write through to the shared ROM bytearray.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._tables: list[_Table1D] = []
         self._build_ui()
 
     def _build_ui(self):
@@ -105,8 +169,9 @@ class CorrectionsTab(QWidget):
         self._layout.addWidget(self._lbl_empty)
         self._layout.addStretch()
 
-    def load_rom(self, result: DetectionResult, rom: bytes):
-        # Clear old content
+    def load_rom(self, result: DetectionResult, rom: bytearray):
+        self._tables = []
+
         while self._layout.count():
             item = self._layout.takeAt(0)
             if item.widget():
@@ -121,7 +186,6 @@ class CorrectionsTab(QWidget):
             self._layout.addStretch()
             return
 
-        # Filter to 1D maps only (skip the main 16×16 ignition/fuel)
         skip = {"Ignition", "Fuel", "Ignition Map 1 (Low Load)",
                 "Ignition Map 2 (Mid Load)", "Ignition Map 3 (WOT)"}
         maps_1d = [m for m in result.maps if m.name not in skip]
@@ -132,7 +196,6 @@ class CorrectionsTab(QWidget):
             lbl.setStyleSheet("color: #3d5068;")
             self._layout.addWidget(lbl)
         else:
-            # Group into two columns
             col_a = QVBoxLayout()
             col_b = QVBoxLayout()
             for i, md in enumerate(maps_1d):
@@ -141,6 +204,7 @@ class CorrectionsTab(QWidget):
                     t.load(rom)
                 except Exception:
                     pass
+                self._tables.append(t)
                 (col_a if i % 2 == 0 else col_b).addWidget(t)
 
             row = QHBoxLayout()
@@ -149,3 +213,9 @@ class CorrectionsTab(QWidget):
             self._layout.addLayout(row)
 
         self._layout.addStretch()
+
+    def write_back(self, rom: bytearray) -> bytearray:
+        """Write all 1D table edits into the given ROM bytearray and return it."""
+        for t in self._tables:
+            rom = t.write_back(rom)
+        return rom
