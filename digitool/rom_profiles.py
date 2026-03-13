@@ -540,19 +540,140 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
             map_sensor_kpa=sensor_kpa,
         )
 
-    # 3. Unknown
+    # 3. Heuristic detection — score signals, pick best family match
+    #
+    # Signals used:
+    #   fill_lo   — fraction of lower 16KB (0x0000–0x3FFF) that is 0x41 fill
+    #               All Digifant 1 ROMs use 0x41 as fill; non-Digifant ROMs don't
+    #   ign_ok    — fraction of expected ignition map (0x4004–0x4103) in range 60–200
+    #               Digifant ign bytes encode 7–45° BTDC → ~60–200 raw; noise/code is not
+    #   ign_t_ok  — same check at triple-map ign offset (0x4000–0x40FF)
+    #   fuel_ok   — fraction of fuel map (0x4104–0x4203) in 10–180
+    #   sensor_hit — CE 00 C8 / CE 00 FA opcode is Digifant 1 firmware signature
+    #   g40_ign_ok — G40 ignition sits at same 0x4004 offset but code region differs;
+    #                additional cross-check at 0x5BC2 rev limit for plausible RPM
+
+    fill_lo  = sum(1 for b in data[:0x4000] if b == 0x41) / 0x4000
+    ign_ok   = sum(1 for b in data[0x4004:0x4104] if 60 <= b <= 200) / 256
+    ign_t_ok = sum(1 for b in data[0x4000:0x4100] if 60 <= b <= 200) / 256
+    fuel_ok  = sum(1 for b in data[0x4104:0x4204] if 10 <= b <= 180) / 256
+    sensor_hit = (
+        _CE00C8 in data or _CE00FA in data or
+        _C1C8   in data or _C1FA   in data
+    )
+
+    # Helper: plausible rev limit at a given address
+    def _plausible_rev(addr: int) -> bool:
+        if addr + 2 > len(data):
+            return False
+        raw = (data[addr] << 8) | data[addr + 1]
+        if raw == 0:
+            return False
+        rpm = 30_000_000 // raw
+        return 4000 <= rpm <= 10000
+
+    # Score each family
+    #   We weight fill_lo heavily — it's the strongest discriminator
+    #   ign_ok is reliable across all tuned ROMs (map cells don't change range)
+    #   sensor_hit is a firmware opcode, very strong positive signal
+
+    def _score_g60_single() -> float:
+        s  = fill_lo * 0.40      # strongest signal
+        s += ign_ok  * 0.30
+        s += fuel_ok * 0.10
+        s += (0.15 if sensor_hit else 0.0)
+        s += (0.05 if _plausible_rev(0x4BF2) else 0.0)
+        return s
+
+    def _score_g60_triple() -> float:
+        s  = fill_lo  * 0.35
+        s += ign_t_ok * 0.35
+        s += (0.15 if sensor_hit else 0.0)
+        s += (0.10 if _plausible_rev(0x4456) else 0.0)
+        s += (0.05 if data[0x4300:0x4304] != b'\x41\x41\x41\x41' else 0.0)
+        return s
+
+    def _score_g40_mk3() -> float:
+        s  = fill_lo * 0.40
+        s += ign_ok  * 0.30
+        s += fuel_ok * 0.10
+        s += (0.15 if sensor_hit else 0.0)
+        s += (0.05 if _plausible_rev(0x5BC2) else 0.0)
+        return s
+
+    def _score_g40_mk2() -> float:
+        # Mk2: no fill, vec E000 strongly preferred, sensor_hit required
+        # Hard gates: opcode must exist AND lower 16KB must NOT be 0x41 fill
+        if not sensor_hit:
+            return 0.0
+        if fill_lo > 0.10:  # G60/G40 Mk3 always have fill; Mk2 never does
+            return 0.0
+        no_fill = 1.0 - fill_lo
+        s  = no_fill * 0.20
+        s += (0.40 if vec_str == "E000" else 0.0)
+        s += ign_ok  * 0.25
+        s += 0.15    # sensor_hit already confirmed above
+        return s
+
+    scores = {
+        "G60_SINGLE": _score_g60_single(),
+        "G60_TRIPLE": _score_g60_triple(),
+        "G40_MK3":    _score_g40_mk3(),
+        "G40_MK2":    _score_g40_mk2(),
+    }
+    best_key   = max(scores, key=scores.__getitem__)
+    best_score = scores[best_key]
+
+    # Minimum threshold — below this we still call it unknown
+    NOT_DIGIFANT_THRESHOLD = 0.50
+
+    if best_score < NOT_DIGIFANT_THRESHOLD:
+        return DetectionResult(
+            variant=VARIANT_UNKNOWN,
+            family=MAP_FAMILY_SINGLE,
+            label="Unknown ROM",
+            confidence="LOW",
+            method=f"No fingerprint matched (best heuristic score {best_score:.2f} < {NOT_DIGIFANT_THRESHOLD})",
+            crc32=crc,
+            warnings=[
+                "Could not identify ROM variant.",
+                f"Reset vector: {vec_str}",
+                f"CRC32: {crc:#010x}",
+                f"Heuristic scores: { {k: f'{v:.2f}' for k,v in scores.items()} }",
+                "Supported ROMs: G60 Corrado/Golf/Jetta/Passat, G60 16v, G60 Triple-Map, G40 Mk3, G40 Mk2",
+            ],
+            map_sensor_kpa=sensor_kpa,
+        )
+
+    # Map best_key to variant/family/rev_addr — same values the reset-vector path would use
+    _heuristic_map = {
+        "G60_SINGLE": dict(variant="G60",     family=MAP_FAMILY_SINGLE, rev_addr=0x4BF2,
+                           label="G60 (heuristic match)"),
+        "G60_TRIPLE": dict(variant="G60",     family=MAP_FAMILY_TRIPLE, rev_addr=0x4456,
+                           label="G60 Triple-Map (heuristic match)"),
+        "G40_MK3":    dict(variant="G40",     family=MAP_FAMILY_SINGLE, rev_addr=0x5BC2,
+                           label="G40 Mk3 (heuristic match)"),
+        "G40_MK2":    dict(variant="G40_MK2", family=MAP_FAMILY_MK2,    rev_addr=None,
+                           label="G40 Mk2 (heuristic match)"),
+    }
+    hm = _heuristic_map[best_key]
+
+    confidence = "MEDIUM" if best_score >= 0.70 else "LOW"
+
     return DetectionResult(
-        variant=VARIANT_UNKNOWN,
-        family=MAP_FAMILY_SINGLE,
-        label="Unknown ROM",
-        confidence="LOW",
-        method="No fingerprint matched",
+        variant=hm["variant"],
+        family=hm["family"],
+        label=hm["label"],
+        confidence=confidence,
+        method=f"Heuristic ({best_key}, score {best_score:.2f})",
+        cal="UNKNOWN",
+        rev_addr=hm["rev_addr"],
         crc32=crc,
         warnings=[
-            "Could not identify ROM variant.",
-            f"Reset vector: {vec_str}",
-            f"CRC32: {crc:#010x}",
-            "Supported ROMs: G60 Corrado/Golf/Jetta/Passat, G60 16v, G60 Triple-Map, G40 Mk3, G40 Mk2",
+            f"ROM not in known library — identified by heuristics (confidence {confidence}).",
+            f"Reset vector: {vec_str}  CRC32: {crc:#010x}",
+            f"Heuristic scores: { {k: f'{v:.2f}' for k,v in scores.items()} }",
+            "Map locations assumed from variant — verify before burning.",
         ],
         map_sensor_kpa=sensor_kpa,
     )
