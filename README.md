@@ -17,17 +17,20 @@ No install required. Just download and run.
 
 ## Features
 
-- 🔥 **Ignition Map** — 16×16 heatmap, click any cell for °BTDC decoded value
+- 🔥 **Ignition Map** — 16×16 heatmap, click any cell for °BTDC decoded value. Triple-map G60 variants get three separate tabs (Low Load / Mid Load / WOT)
 - ⛽ **Fuel Map** — 16×16 heatmap with raw byte inspection
-- 🌀 **Boost & ISV** — Boost cut (no-knock + knock), ISV control, WOT enrichment, CO adj
-- 🔩 **Knock & Dwell** — Knock multiplier, retard/decay rates, coil dwell, idle ignition limits
-- 💧 **Fuel Corrections** — Warmup, ECT ×2, IAT, startup, hot start, battery comp, injector lag, accel enrich ×3, OXS up/downswing
-- ⊕ **ROM Compare/Diff** — Byte-by-byte diff with map region tagging and delta
+- 🌀 **Boost / ISV** — RPM scalar, boost cut (no-knock + knock), ISV control, startup ISV vs ECT
+- 🚀 **WOT & Accel** — WOT enrichment, WOT initial enrichment (9×5), CO adj vs MAP, accel enrich min ΔMAP, mult ECT, adder ECT
+- 🔩 **Knock & Dwell** — Coil dwell, knock multiplier, knock retard rate, knock decay rate
+- ⏱ **Idle & Ignition** — Advance vs ECT, idle advance time, idle ign high/low limits, idle ignition
+- 🌡 **Temperature** — Warmup enrichment, IAT comp, ECT comp ×2, startup enrichment, hot start, battery compensation
+- 💧 **Lambda / OXS** — Injector lag, OXS upswing, OXS downswing
+- ⊕ **Compare / Diff** — Byte-by-byte diff with map region tagging and delta
 - ⚑ **ROM Detection** — Auto-identifies variant, calibration status, MAP sensor range (200 vs 250 kPa)
-- ⚑ **Code Patches** — Auto-detects Digilag disable, Open Loop Lambda, ISV disable, SNS lambda gates
+- ⚑ **Code Patches** — Digilag disable, open loop lambda, ISV disable, SNS lambda gates
 - 〒 **Hex View** — Full raw hex with region labels, jump-to-address/region
 - ↓ **Rev Limit Editor** — Enter target RPM → calculates bytes → exports modified BIN
-- ↓ **27C512 Export** — Mirrors 32KB ROM to 64KB for direct 27C512/27SF512 burning
+- ↓ **27C512 Export** — Mirrors 32 KB ROM to 64 KB for direct 27C512/27SF512 burning
 
 ## Supported ECUs
 

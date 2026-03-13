@@ -1,7 +1,6 @@
 """
-ui/corrections_tab.py
-1D correction / scalar tables: warmup enrichment, ECT, IAT, boost cut, etc.
-All tables are editable — changes write through to the shared ROM bytearray in-place.
+ui/table_widgets.py
+Shared editable 1D table widget and helpers used by all correction tabs.
 """
 
 from PyQt5.QtWidgets import (
@@ -12,10 +11,10 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QBrush
 
-from digitool.rom_profiles import DetectionResult, MapDef, MAP_FAMILY_MK2
+from digitool.rom_profiles import MapDef
 
 
-def _heat(val: int, lo: int, hi: int) -> QColor:
+def heat_color(val: int, lo: int, hi: int) -> QColor:
     if hi == lo:
         return QColor("#1a2332")
     t = max(0.0, min(1.0, (val - lo) / (hi - lo)))
@@ -27,8 +26,11 @@ def _heat(val: int, lo: int, hi: int) -> QColor:
         return QColor(int(u * 255), int(200 - u * 200), 0)
 
 
-class _Table1D(QWidget):
-    """Single 1D table — editable, writes through to shared ROM bytearray."""
+class Table1D(QWidget):
+    """
+    Editable 1D (or flat 2D) table — writes changed cells through to
+    the shared ROM bytearray in-place immediately on edit.
+    """
 
     def __init__(self, map_def: MapDef, parent=None):
         super().__init__(parent)
@@ -58,15 +60,8 @@ class _Table1D(QWidget):
     def load(self, rom: bytearray):
         self._rom = rom
         md = self._map_def
-        start = md.data_addr
-
-        data = []
-        for i in range(md.size):
-            try:
-                data.append(rom[start + i])
-            except IndexError:
-                data.append(0)
-
+        data = [rom[md.data_addr + i] if md.data_addr + i < len(rom) else 0
+                for i in range(md.size)]
         lo, hi = min(data), max(data)
         self.table.blockSignals(True)
         for r in range(md.rows):
@@ -74,13 +69,12 @@ class _Table1D(QWidget):
                 val = data[r * md.cols + c]
                 item = QTableWidgetItem(str(val))
                 item.setTextAlignment(Qt.AlignCenter)
-                item.setBackground(QBrush(_heat(val, lo, hi)))
+                item.setBackground(QBrush(heat_color(val, lo, hi)))
                 item.setForeground(QBrush(QColor("#e0eaf2")))
                 self.table.setItem(r, c, item)
         self.table.blockSignals(False)
 
     def _on_item_changed(self, item: QTableWidgetItem):
-        """Validate and write changed cell back to the shared ROM bytearray."""
         if self._rom is None:
             return
         try:
@@ -88,26 +82,22 @@ class _Table1D(QWidget):
         except ValueError:
             self._revert_cell(item)
             return
-
         if not (0 <= val <= 255):
             self._revert_cell(item)
             return
-
         r, c = item.row(), item.column()
         offset = self._map_def.data_addr + r * self._map_def.cols + c
         if offset < len(self._rom):
             self._rom[offset] = val
-
-        # Recolor based on new range
-        all_vals = [self._rom[self._map_def.data_addr + i] for i in range(self._map_def.size)]
+        all_vals = [self._rom[self._map_def.data_addr + i]
+                    for i in range(self._map_def.size)]
         lo, hi = min(all_vals), max(all_vals)
         self.table.blockSignals(True)
-        item.setBackground(QBrush(_heat(val, lo, hi)))
+        item.setBackground(QBrush(heat_color(val, lo, hi)))
         item.setForeground(QBrush(QColor("#e0eaf2")))
         self.table.blockSignals(False)
 
     def _revert_cell(self, item: QTableWidgetItem):
-        """Revert a cell to the current ROM value after bad input."""
         if self._rom is None:
             return
         r, c = item.row(), item.column()
@@ -118,16 +108,15 @@ class _Table1D(QWidget):
             self.table.blockSignals(False)
 
     def write_back(self, rom: bytearray) -> bytearray:
-        """Write current table values into the given ROM bytearray."""
         md = self._map_def
         self.table.blockSignals(True)
         for r in range(md.rows):
             for c in range(md.cols):
-                item = self.table.item(r, c)
-                if item is None:
+                it = self.table.item(r, c)
+                if it is None:
                     continue
                 try:
-                    val = max(0, min(255, int(item.text())))
+                    val = max(0, min(255, int(it.text())))
                 except ValueError:
                     continue
                 offset = md.data_addr + r * md.cols + c
@@ -137,18 +126,20 @@ class _Table1D(QWidget):
         return rom
 
 
-class CorrectionsTab(QWidget):
+class CorrectionTabBase(QWidget):
     """
-    Scrollable view of all 1D correction/scalar maps for the loaded ROM.
-    All tables are editable and write through to the shared ROM bytearray.
+    Base class for all correction tabs.
+    Subclasses define _MAP_NAMES (ordered list of map names to show)
+    and call _build_tables(result, rom) from load_rom().
     """
+
+    _MAP_NAMES: list[str] = []   # override in subclass
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._tables: list[_Table1D] = []
-        self._build_ui()
+        self._tables: list[Table1D] = []
+        self._rom: bytearray | None = None
 
-    def _build_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
 
@@ -158,64 +149,69 @@ class CorrectionsTab(QWidget):
         root.addWidget(scroll)
 
         self._content = QWidget()
-        self._layout  = QVBoxLayout(self._content)
-        self._layout.setContentsMargins(12, 12, 12, 12)
-        self._layout.setSpacing(14)
+        self._grid = QHBoxLayout(self._content)
+        self._grid.setContentsMargins(12, 12, 12, 12)
+        self._grid.setSpacing(16)
         scroll.setWidget(self._content)
 
-        self._lbl_empty = QLabel("No ROM loaded.")
-        self._lbl_empty.setAlignment(Qt.AlignCenter)
-        self._lbl_empty.setStyleSheet("color: #3d5068; font-size: 14px;")
-        self._layout.addWidget(self._lbl_empty)
-        self._layout.addStretch()
+        self._col_a = QVBoxLayout()
+        self._col_b = QVBoxLayout()
+        self._col_a.setSpacing(14)
+        self._col_b.setSpacing(14)
+        self._grid.addLayout(self._col_a)
+        self._grid.addLayout(self._col_b)
 
-    def load_rom(self, result: DetectionResult, rom: bytearray):
+        self._show_placeholder("No ROM loaded.")
+
+    def _show_placeholder(self, msg: str):
+        self._clear_cols()
+        lbl = QLabel(msg)
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("color: #3d5068; font-size: 13px;")
+        lbl.setWordWrap(True)
+        self._col_a.addWidget(lbl)
+        self._col_a.addStretch()
+        self._col_b.addStretch()
+
+    def _clear_cols(self):
         self._tables = []
+        for layout in (self._col_a, self._col_b):
+            while layout.count():
+                item = layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
 
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+    def load_rom(self, result, rom: bytearray):
+        self._rom = rom
+        self._clear_cols()
 
         if result.is_mk2:
-            lbl = QLabel("G40 Mk2 — correction map addresses not yet confirmed.\nMain ignition/fuel maps available in the Maps tab.")
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("color: #e8b84b; font-size: 13px;")
-            lbl.setWordWrap(True)
-            self._layout.addWidget(lbl)
-            self._layout.addStretch()
+            self._show_placeholder(
+                "G40 Mk2 — correction map addresses not yet confirmed."
+            )
             return
 
-        skip = {"Ignition", "Fuel", "Ignition Map 1 (Low Load)",
-                "Ignition Map 2 (Mid Load)", "Ignition Map 3 (WOT)"}
-        maps_1d = [m for m in result.maps if m.name not in skip]
+        # Build a name→MapDef lookup from result.maps
+        map_lookup = {m.name: m for m in result.maps}
+        found = [map_lookup[n] for n in self._MAP_NAMES if n in map_lookup]
 
-        if not maps_1d:
-            lbl = QLabel("No correction tables found for this variant.")
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("color: #3d5068;")
-            self._layout.addWidget(lbl)
-        else:
-            col_a = QVBoxLayout()
-            col_b = QVBoxLayout()
-            for i, md in enumerate(maps_1d):
-                t = _Table1D(md)
-                try:
-                    t.load(rom)
-                except Exception:
-                    pass
-                self._tables.append(t)
-                (col_a if i % 2 == 0 else col_b).addWidget(t)
+        if not found:
+            self._show_placeholder("No tables available for this variant.")
+            return
 
-            row = QHBoxLayout()
-            row.addLayout(col_a)
-            row.addLayout(col_b)
-            self._layout.addLayout(row)
+        for i, md in enumerate(found):
+            t = Table1D(md)
+            t.load(rom)
+            self._tables.append(t)
+            if i % 2 == 0:
+                self._col_a.addWidget(t)
+            else:
+                self._col_b.addWidget(t)
 
-        self._layout.addStretch()
+        self._col_a.addStretch()
+        self._col_b.addStretch()
 
     def write_back(self, rom: bytearray) -> bytearray:
-        """Write all 1D table edits into the given ROM bytearray and return it."""
         for t in self._tables:
             rom = t.write_back(rom)
         return rom

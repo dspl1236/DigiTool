@@ -10,15 +10,22 @@ from PyQt5.QtWidgets import (
     QStatusBar, QLabel, QFileDialog, QMessageBox,
     QSizePolicy, QHBoxLayout
 )
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 
 from digitool.version import WINDOW_TITLE, APP_VERSION
-from digitool.rom_profiles import detect_rom, normalize_rom_image, DetectionResult
+from digitool.rom_profiles import (
+    detect_rom, normalize_rom_image, DetectionResult, MAP_FAMILY_TRIPLE
+)
 
 from digitool.ui.overview_tab    import OverviewTab
-from digitool.ui.map_editor_tab  import MapEditorTab
-from digitool.ui.corrections_tab import CorrectionsTab
+from digitool.ui.map_editor_tab  import MapPanel
+from digitool.ui.boost_tab       import BoostTab
+from digitool.ui.wot_accel_tab   import WotAccelTab
+from digitool.ui.knock_dwell_tab import KnockDwellTab
+from digitool.ui.idle_ign_tab    import IdleIgnTab
+from digitool.ui.temperature_tab import TemperatureTab
+from digitool.ui.lambda_tab      import LambdaTab
 from digitool.ui.hex_tab         import HexTab
 from digitool.ui.diff_tab        import DiffTab
 
@@ -30,9 +37,14 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1280, 800)
         self.resize(1440, 900)
 
-        self._rom_path: str | None     = None
-        self._rom:      bytearray | None = None
+        self._rom_path: str | None          = None
+        self._rom:      bytearray | None    = None
         self._result:   DetectionResult | None = None
+
+        # Map panels — populated per ROM load (variable count for triple-map)
+        self._map_panels: list[MapPanel] = []
+        # Correction tabs — fixed instances, all share write_back interface
+        self._corr_tabs: list = []
 
         self._build_ui()
         self._setup_status_bar()
@@ -53,7 +65,7 @@ class MainWindow(QMainWindow):
         hlay = QHBoxLayout(header)
         hlay.setContentsMargins(16, 0, 16, 0)
 
-        logo = QLabel(f"DigiTool")
+        logo = QLabel("DigiTool")
         logo.setFont(QFont("Segoe UI", 14, QFont.Bold))
         logo.setStyleSheet("color: #00d4ff; letter-spacing: 2px;")
 
@@ -71,26 +83,45 @@ class MainWindow(QMainWindow):
         hlay.addWidget(sub_lbl)
         hlay.addStretch()
         hlay.addWidget(self.lbl_rom_name)
-
         root.addWidget(header)
 
-        # Tab area
+        # Main tab bar
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
+        root.addWidget(self.tabs, 1)
 
+        # ── Fixed tabs (always present) ──────────────────────────────────────
         self.tab_overview    = OverviewTab()
-        self.tab_maps        = MapEditorTab()
-        self.tab_corrections = CorrectionsTab()
+        self.tab_boost       = BoostTab()
+        self.tab_wot_accel   = WotAccelTab()
+        self.tab_knock       = KnockDwellTab()
+        self.tab_idle        = IdleIgnTab()
+        self.tab_temperature = TemperatureTab()
+        self.tab_lambda      = LambdaTab()
         self.tab_hex         = HexTab()
         self.tab_diff        = DiffTab()
 
-        self.tabs.addTab(self.tab_overview,    "Overview")
-        self.tabs.addTab(self.tab_maps,        "Maps")
-        self.tabs.addTab(self.tab_corrections, "Corrections")
+        self._corr_tabs = [
+            self.tab_boost, self.tab_wot_accel, self.tab_knock,
+            self.tab_idle, self.tab_temperature, self.tab_lambda,
+        ]
+
+        # Add permanent tabs (map tabs inserted dynamically on ROM load)
+        self.tabs.addTab(self.tab_overview, "Overview")
+        # Map tabs added at indices 1..N dynamically — see _rebuild_map_tabs()
+        self._map_tab_count = 0   # tracks how many map tabs are currently inserted
+
+        # Correction tabs — added after map tabs
+        self._corr_tab_start = 1  # updated in _rebuild_map_tabs
+
+        self.tabs.addTab(self.tab_boost,       "Boost / ISV")
+        self.tabs.addTab(self.tab_wot_accel,   "WOT & Accel")
+        self.tabs.addTab(self.tab_knock,       "Knock & Dwell")
+        self.tabs.addTab(self.tab_idle,        "Idle & Ign")
+        self.tabs.addTab(self.tab_temperature, "Temperature")
+        self.tabs.addTab(self.tab_lambda,      "Lambda / OXS")
         self.tabs.addTab(self.tab_hex,         "Hex View")
         self.tabs.addTab(self.tab_diff,        "Compare")
-
-        root.addWidget(self.tabs, 1)
 
         # Wire overview signals
         self.tab_overview.sig_open_rom.connect(self._open_rom)
@@ -99,7 +130,6 @@ class MainWindow(QMainWindow):
         self.tab_overview.sig_save_512.connect(self._save_27c512)
         self.tab_overview.sig_rom_mutated.connect(self._on_rom_mutated)
 
-        # Enable drag-and-drop of .BIN files onto the window
         self.setAcceptDrops(True)
 
     def _setup_status_bar(self):
@@ -113,6 +143,48 @@ class MainWindow(QMainWindow):
         self.statusbar.addPermanentWidget(self.lbl_status)
         self.statusbar.showMessage(f"DigiTool v{APP_VERSION}  —  Digifant 1 G60/G40 ECU Editor")
 
+    def _rebuild_map_tabs(self, result: DetectionResult, rom: bytearray):
+        """
+        Remove old map panels from the tab bar and insert fresh ones
+        based on the loaded ROM family (single ign / triple ign + fuel).
+        Map tabs always sit at indices 1..N (after Overview).
+        """
+        # Remove old map panel tabs
+        for _ in range(self._map_tab_count):
+            self.tabs.removeTab(1)  # always remove index 1 (Overview stays at 0)
+        self._map_panels.clear()
+        self._map_tab_count = 0
+
+        maps = result.maps
+
+        if result.is_triple:
+            ign_defs = [m for m in maps if "Ignition" in m.name]
+            tab_names = ["Ign Map 1", "Ign Map 2", "Ign Map 3"]
+            titles    = ["Ignition — Low Load", "Ignition — Mid Load", "Ignition — WOT"]
+        else:
+            ign_defs  = [m for m in maps if m.name == "Ignition"]
+            tab_names = ["Ignition"]
+            titles    = ["Ignition"]
+
+        fuel_defs = [m for m in maps if m.name == "Fuel"]
+
+        insert_idx = 1
+        for md, tab_name, title in zip(ign_defs, tab_names, titles):
+            panel = MapPanel(title, "ign")
+            panel.load(md, rom)
+            self.tabs.insertTab(insert_idx, panel, tab_name)
+            self._map_panels.append(panel)
+            insert_idx += 1
+            self._map_tab_count += 1
+
+        for md in fuel_defs:
+            panel = MapPanel("Fuel", "fuel")
+            panel.load(md, rom)
+            self.tabs.insertTab(insert_idx, panel, "Fuel")
+            self._map_panels.append(panel)
+            insert_idx += 1
+            self._map_tab_count += 1
+
     # ── ROM I/O ───────────────────────────────────────────────────────────────
 
     def _open_rom(self):
@@ -121,7 +193,6 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-
         try:
             with open(path, "rb") as f:
                 raw = f.read()
@@ -129,22 +200,18 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Could not read file:\n{e}")
             return
 
-        # Normalize: handles 27C512 (64KB mirrored), sub-32KB, padded images, etc.
         data, notes = normalize_rom_image(raw)
-
         if notes:
             QMessageBox.information(
                 self, "ROM Image Normalized",
                 "\n".join(notes) + f"\n\nFile: {os.path.basename(path)}\nLoaded as: {len(data):,} bytes"
             )
-
         if len(data) != 0x8000:
             QMessageBox.critical(
                 self, "Unsupported Size",
                 f"Could not normalize to 32 KB.\nGot {len(data):,} bytes after processing."
             )
             return
-
         self._load_rom_data(path, bytes(data))
 
     def _load_rom_data(self, path: str, data: bytes):
@@ -153,35 +220,45 @@ class MainWindow(QMainWindow):
         self._rom      = bytearray(data)
         self._result   = result
 
-        short = path.split("/")[-1].split("\\")[-1]
+        short = os.path.basename(path)
         self.lbl_rom_name.setText(f"{short}  ·  {result.label}")
         self.lbl_rom_name.setStyleSheet("color: #bccdd8; font-size: 11px; font-family: Consolas;")
 
-        # Warnings
         if result.warnings:
-            msg = "\n".join(result.warnings)
-            QMessageBox.information(self, "ROM Detection", msg)
+            QMessageBox.information(self, "ROM Detection", "\n".join(result.warnings))
 
-        # Populate all tabs
+        # Rebuild dynamic map tabs
+        self._rebuild_map_tabs(result, self._rom)
+
+        # Load all fixed tabs
         self.tab_overview.update_rom(result, self._rom)
-        self.tab_maps.load_rom(result, self._rom)
-        self.tab_corrections.load_rom(result, self._rom)
+        for tab in self._corr_tabs:
+            tab.load_rom(result, self._rom)
         self.tab_hex.load_rom(result, self._rom)
         self.tab_diff.set_rom_a(result, self._rom)
 
         self.statusbar.showMessage(
-            f"Loaded: {short}  |  {result.label}  |  {result.confidence} confidence  |  CRC32: {result.crc32:#010x}",
-            8000
+            f"Loaded: {short}  |  {result.label}  |  {result.confidence} confidence"
+            f"  |  CRC32: {result.crc32:#010x}", 8000
         )
-        # Switch to maps tab after load
-        self.tabs.setCurrentWidget(self.tab_maps)
+        # Jump to first ignition tab
+        self.tabs.setCurrentIndex(1)
+
+    def _collect_rom(self) -> bytearray:
+        """Collect all pending edits from every tab into a fresh bytearray."""
+        if self._rom is None:
+            return bytearray()
+        rom = bytearray(self._rom)
+        for panel in self._map_panels:
+            rom = panel.write_back(rom)
+        for tab in self._corr_tabs:
+            rom = tab.write_back(rom)
+        return rom
 
     def _save_rom(self):
         if self._rom is None or self._rom_path is None:
             return
-        # Write back pending map edits (maps + all 1D corrections)
-        self._rom = bytearray(self.tab_maps.write_back())
-        self._rom = bytearray(self.tab_corrections.write_back(self._rom))
+        self._rom = self._collect_rom()
         try:
             with open(self._rom_path, "wb") as f:
                 f.write(self._rom)
@@ -197,8 +274,7 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-        self._rom = bytearray(self.tab_maps.write_back())
-        self._rom = bytearray(self.tab_corrections.write_back(self._rom))
+        self._rom = self._collect_rom()
         try:
             with open(path, "wb") as f:
                 f.write(self._rom)
@@ -212,32 +288,17 @@ class MainWindow(QMainWindow):
         self._rom = bytearray(new_rom)
 
     def _save_27c512(self):
-        """
-        Export a 64 KB file for burning to a 27C512 EPROM.
-        The 32 KB ROM is written twice (lower half + upper half = mirror).
-        The ECU's address decoder typically reads the upper half (0x8000-0xFFFF),
-        but both halves are identical so either works.
-        """
         if self._rom is None:
             return
-
-        # Collect any pending map edits; fall back to current ROM if nothing changed
-        written = self.tab_maps.write_back()
-        written = self.tab_corrections.write_back(bytearray(written))
-        rom_32k = bytes(written) if written else bytes(self._rom)
-
+        rom_32k = bytes(self._collect_rom())
         if len(rom_32k) != 0x8000:
-            QMessageBox.critical(
-                self, "Error",
-                f"ROM is {len(rom_32k):,} bytes — expected 32,768 bytes (32 KB).\n"
-                "Cannot create 27C512 image."
-            )
+            QMessageBox.critical(self, "Error",
+                f"ROM is {len(rom_32k):,} bytes — expected 32,768 bytes.\n"
+                "Cannot create 27C512 image.")
             return
 
-        # Suggest filename based on original
         base = ""
         if self._rom_path:
-            import os
             stem = os.path.splitext(os.path.basename(self._rom_path))[0]
             base = stem + "_27C512.bin"
 
@@ -248,21 +309,17 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
-        # Mirror: ROM + ROM = 64 KB
         image_64k = rom_32k + rom_32k
-
         try:
             with open(path, "wb") as f:
                 f.write(image_64k)
             self.statusbar.showMessage(
                 f"Saved 27C512 image: {path}  ({len(image_64k):,} bytes — 32KB × 2 mirror)", 6000
             )
-            QMessageBox.information(
-                self, "27C512 Image Saved",
+            QMessageBox.information(self, "27C512 Image Saved",
                 f"64 KB image written to:\n{path}\n\n"
-                f"Contents: 32 KB ROM mirrored twice.\n"
-                f"Ready to burn to a 27C512 EPROM."
-            )
+                "Contents: 32 KB ROM mirrored twice.\n"
+                "Ready to burn to a 27C512 EPROM.")
         except OSError as e:
             QMessageBox.critical(self, "Save Error", str(e))
 
@@ -270,8 +327,8 @@ class MainWindow(QMainWindow):
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            if any(u.toLocalFile().lower().endswith(".bin") for u in urls):
+            if any(u.toLocalFile().lower().endswith(".bin")
+                   for u in event.mimeData().urls()):
                 event.acceptProposedAction()
 
     def dropEvent(self, event):
@@ -280,14 +337,16 @@ class MainWindow(QMainWindow):
             if path.lower().endswith(".bin"):
                 try:
                     with open(path, "rb") as f:
-                        data = f.read()
+                        raw = f.read()
+                    data, notes = normalize_rom_image(raw)
+                    if notes:
+                        QMessageBox.information(self, "ROM Image Normalized",
+                            "\n".join(notes))
                     if len(data) == 0x8000:
-                        self._load_rom_data(path, data)
+                        self._load_rom_data(path, bytes(data))
                     else:
-                        QMessageBox.warning(
-                            self, "Wrong Size",
-                            f"Expected 32 KB, got {len(data):,} bytes."
-                        )
+                        QMessageBox.warning(self, "Wrong Size",
+                            f"Expected 32 KB, got {len(data):,} bytes.")
                 except OSError as e:
                     QMessageBox.critical(self, "Error", str(e))
                 break
