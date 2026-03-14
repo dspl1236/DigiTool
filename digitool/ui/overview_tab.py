@@ -61,6 +61,14 @@ class OverviewTab(QWidget):
         title.setFont(QFont("Segoe UI", 16, QFont.Bold))
         root.addWidget(title)
 
+        # ── KWPBridge status banner ───────────────────────────────────────────
+        self._kwp_banner = QLabel("● KWPBridge not running  —  live overlay unavailable")
+        self._kwp_banner.setStyleSheet(
+            "background: #0a0a12; color: #3d5068; font-size: 11px; "
+            "font-family: Consolas; padding: 6px 12px; "
+            "border-left: 3px solid #1a2332; margin-bottom: 4px;")
+        root.addWidget(self._kwp_banner)
+
         # ── File actions ─────────────────────────────────────────────────────
         grp_file = QGroupBox("File")
         fl = QHBoxLayout(grp_file)
@@ -278,6 +286,15 @@ class OverviewTab(QWidget):
         root.addStretch()
 
     # ── Public API ────────────────────────────────────────────────────────────
+
+    def update_kwp_status(self, text: str, colour: str):
+        """Update KWPBridge status banner — called by MainWindow."""
+        if hasattr(self, '_kwp_banner'):
+            self._kwp_banner.setText(text)
+            self._kwp_banner.setStyleSheet(
+                f"background: #0a0a12; color: {colour}; font-size: 11px; "
+                f"font-family: Consolas; padding: 6px 12px; "
+                f"border-left: 3px solid {colour}; margin-bottom: 4px;")
 
     def update_rom(self, result: DetectionResult, rom: bytes):
         self._result = result

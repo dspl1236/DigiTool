@@ -388,6 +388,26 @@ class DetectionResult:
     raw:            Optional[dict] = None   # full profile dict from CRC table, if matched
 
     @property
+    def part_number(self) -> str:
+        """
+        ECU part number for KWPBridge safety gate.
+        Derived from variant + reset vector:
+          G60 single/triple → 037906023  (Digifant 1 / Motronic 2.x)
+          G40 Mk3           → 037906025  (ADY/AFT)
+          G40 Mk2           → 037906023  (early)
+          Unknown           → ""
+        """
+        _MAP = {
+            "G60":     "037906023",
+            "G60_PASSAT": "037906023",
+            "G60_16V_LIMITED": "037906023",
+            "G60_TRIPLE": "037906023",
+            "G40":     "037906025",
+            "G40_MK2": "037906023",
+        }
+        return _MAP.get(self.variant, "")
+
+    @property
     def is_known_stock(self) -> bool:
         return self.cal == "STOCK"
 

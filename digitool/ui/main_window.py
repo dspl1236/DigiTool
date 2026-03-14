@@ -10,12 +10,17 @@ from PyQt5.QtWidgets import (
     QStatusBar, QLabel, QFileDialog, QMessageBox,
     QSizePolicy, QHBoxLayout
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
 
 from digitool.version import WINDOW_TITLE, APP_VERSION
 from digitool.rom_profiles import (
     detect_rom, normalize_rom_image, DetectionResult, MAP_FAMILY_TRIPLE
+)
+from digitool.kwp import (
+    KWPMonitor, LiveValues,
+    kwpbridge_available, kwpbridge_running,
+    status_label, live_summary,
 )
 
 from digitool.ui.overview_tab    import OverviewTab
@@ -45,6 +50,14 @@ class MainWindow(QMainWindow):
         self._map_panels: list[MapPanel] = []
         # Correction tabs — fixed instances, all share write_back interface
         self._corr_tabs: list = []
+
+        # ── KWPBridge live overlay ────────────────────────────────────────────
+        self._kwp_monitor = KWPMonitor(self)
+        self._kwp_matched  = False
+        self._kwp_monitor.connected.connect(self._on_kwp_connected)
+        self._kwp_monitor.disconnected.connect(self._on_kwp_disconnected)
+        self._kwp_monitor.live_data.connect(self._on_kwp_live_data)
+        self._kwp_monitor.mismatch.connect(self._on_kwp_mismatch)
 
         self._build_ui()
         self._setup_status_bar()
@@ -241,8 +254,65 @@ class MainWindow(QMainWindow):
             f"Loaded: {short}  |  {result.label}  |  {result.confidence} confidence"
             f"  |  CRC32: {result.crc32:#010x}", 8000
         )
+
+        # Tell KWP monitor what ROM is loaded — enables safety gate
+        if result.part_number:
+            self._kwp_monitor.set_rom_part_number(result.part_number)
+            self._update_kwp_ui()
+
         # Jump to first ignition tab
         self.tabs.setCurrentIndex(1)
+
+    # ── KWPBridge live overlay handlers ───────────────────────────────────────
+
+    def _on_kwp_connected(self, ecu_pn: str):
+        self._kwp_matched = self._kwp_monitor.is_matched()
+        self._update_kwp_ui()
+        if self._kwp_matched:
+            for panel in self._map_panels:
+                panel.attach_kwp()
+            self.statusbar.showMessage(
+                f"KWPBridge connected  ·  {ecu_pn}  ·  ECU matches ROM  ·  live overlay active")
+        else:
+            rom_pn = self._result.part_number if self._result else ""
+            self.statusbar.showMessage(
+                f"KWPBridge connected  ·  ECU {ecu_pn}  ≠  ROM {rom_pn}  ·  overlay locked")
+
+    def _on_kwp_disconnected(self):
+        self._kwp_matched = False
+        for panel in self._map_panels:
+            panel.detach_kwp()
+        self._update_kwp_ui()
+        self.statusbar.showMessage("KWPBridge disconnected")
+
+    def _on_kwp_mismatch(self, ecu_pn: str, rom_pn: str):
+        self._kwp_matched = False
+        for panel in self._map_panels:
+            panel.detach_kwp()
+        self._update_kwp_ui()
+
+    def _on_kwp_live_data(self, lv: LiveValues):
+        if not self._kwp_matched:
+            return
+        for panel in self._map_panels:
+            panel.update_overlay(lv)
+        # Update overview KWP banner
+        self._update_kwp_ui(lv)
+
+    def _update_kwp_ui(self, lv: LiveValues = None):
+        rom_pn = self._result.part_number if self._result else ""
+        text, colour = status_label(self._kwp_monitor, rom_pn)
+        if lv and self._kwp_matched:
+            summary = live_summary(lv)
+            if summary:
+                text = f"🟢  {self._kwp_monitor.current_pn()}  ·  {summary}"
+        self.tab_overview.update_kwp_status(text, colour)
+
+    def closeEvent(self, event):
+        self._kwp_monitor.stop()
+        event.accept()
+
+
 
     def _collect_rom(self) -> bytearray:
         """Collect all pending edits from every tab into a fresh bytearray."""
