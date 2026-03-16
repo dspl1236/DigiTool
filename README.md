@@ -7,6 +7,9 @@
 ![ECU](https://img.shields.io/badge/ECU-Digifant--1%20G60%2FG40-orange)
 [![Build Windows EXE](https://github.com/dspl1236/DigiTool/actions/workflows/build.yml/badge.svg)](https://github.com/dspl1236/DigiTool/actions/workflows/build.yml)
 
+
+> **⚠ Before writing any ROM** — always read and save the original chip first. Read it twice, compare the files, keep both copies safe. A write to the wrong address is silent and only shows at startup.
+
 ## ⬇ Download the Desktop App (Windows)
 
 **→ [Download DigiTool.exe (latest build)](https://github.com/dspl1236/DigiTool/releases/latest)**
