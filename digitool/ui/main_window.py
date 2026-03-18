@@ -181,6 +181,11 @@ class MainWindow(QMainWindow):
         a.triggered.connect(self._show_kwp_dialog)
         tm.addAction(a)
 
+        act_dash = QAction("Dashboard…", self)
+        act_dash.setShortcut("Ctrl+D")
+        act_dash.triggered.connect(self._toggle_dashboard)
+        tm.addAction(act_dash)
+
         self._kwp_menu_timer = QTimer(self)
         self._kwp_menu_timer.timeout.connect(self._refresh_kwp_menu_label)
         self._kwp_menu_timer.start(2000)
@@ -423,6 +428,16 @@ class MainWindow(QMainWindow):
             panel.update_overlay(lv)
         # Update overview KWP banner
         self._update_kwp_ui(lv)
+
+    def _toggle_dashboard(self):
+        """Open or close the live ECU dashboard window."""
+        from digitool.kwp import DashboardWindow
+        if not hasattr(self, '_dashboard') or self._dashboard is None:
+            self._dashboard = DashboardWindow(self._kwp_monitor, parent=self)
+        if self._dashboard.is_visible():
+            self._dashboard.hide()
+        else:
+            self._dashboard.show()
 
     def _update_kwp_ui(self, lv: LiveValues = None):
         self._refresh_kwp_menu_label()
