@@ -251,16 +251,48 @@ G40_MK3_MAPS = G60_SINGLE_MAPS  # identical map layout
 
 # ── G60 Triple-Map layout (0x4000 origin) ───────────────────────────────────
 G60_TRIPLE_MAPS: List[MapDef] = [
+    # ── Core maps (confirmed via binary analysis) ─────────────────────────────
     MapDef("Ignition Map 1 (Low Load)",  0x4000, 16, 16, "°BTDC: (210-raw)/2.86"),
     MapDef("Ignition Map 2 (Mid Load)",  0x4100, 16, 16, "°BTDC: (210-raw)/2.86"),
     MapDef("Ignition Map 3 (WOT)",       0x4200, 16, 16, "°BTDC: (210-raw)/2.86"),
-    MapDef("Fuel",                        0x4300, 16, 16, "Raw fuel map"),
-    MapDef("RPM Scalar",                  0x4500, 16,  1),
-    MapDef("Boost Cut (No Knock)",        0x481C, 16,  1),
-    MapDef("Boost Cut (Knock)",           0x482D, 17,  1),
+    MapDef("Fuel",                        0x4300, 16, 16, "Raw fuel map. Duty: raw * 0.392 = %"),
+    MapDef("RPM Scalar",                  0x4500, 16,  1, "16-bit periods. RPM = 15000000/raw"),
+    # ── Calibration tables from XDF (Marc G60T 2014 / VWnut8392 2015) ─────────
+    # Addresses are physical file offsets (CPU − 0x8000). Source: TunerPro XDF
+    # community work with live tracing on 037906022B/DM Corrado triple-map ROMs.
+    MapDef("Coil Dwell",                  0x4520, 16,  1),
+    MapDef("Max Advance",                 0x4530, 16,  1, "°BTDC limit: (210-raw)/2.86"),
+    MapDef("Knock Multiplier",            0x4540, 16,  1, "raw/8 multiplier"),
+    MapDef("Advance vs ECT",              0x4587, 16,  1),
+    MapDef("Min MAP for Knock Retard",    0x4588, 16,  1, "MAP threshold. 148=0 psi, 255=17.4 psi"),
+    MapDef("Idle Advance Time",           0x4598, 16,  1),
+    MapDef("Idle Ign High Limit",         0x45A8, 16,  1),
+    MapDef("Idle Ign Low Limit",          0x45B8, 16,  1),
+    MapDef("Choke",                       0x45C8, 16,  1),
+    MapDef("IAT Compensation",            0x45DA, 16,  1, "raw * 0.392 = %"),
+    MapDef("ECT Compensation 1",          0x45EA, 16,  1, "Warmup enrichment"),
+    MapDef("ECT Compensation 2",          0x45FB, 16,  1, "Post-warmup enrichment"),
+    MapDef("Startup Enrichment",          0x460B, 16,  1),
+    MapDef("Startup Enrichment vs ECT",   0x461D, 16,  1),
+    MapDef("Battery Compensation",        0x462E, 16,  1),
+    MapDef("Accel Enrich Min Delta-MAP",  0x463F, 16,  1),
+    MapDef("Accel Enrich Mult vs ECT",    0x464F, 16,  1),
+    MapDef("Accel Enrich Adder vs ECT",   0x4660, 16,  1),
+    MapDef("OXS Upswing",                 0x4692, 16,  4, "Lambda step up. 16 RPM × 4 MAP bins"),
+    MapDef("Knock Retard Rate",           0x46A2, 16,  1, "raw * 4 = retard step"),
+    MapDef("Knock Decay Rate",            0x46B2, 16,  1, "raw * 4 = recovery step"),
+    MapDef("OXS Downswing",               0x46D2, 16,  4, "Lambda step down. 16 RPM × 4 MAP bins"),
+    MapDef("OXS Decay Interval",          0x4712, 16,  1),
+    MapDef("Startup ISV vs ECT",          0x4722, 16,  1),
+    MapDef("Idle RPM Scalar",             0x4733, 16,  1, "16-bit periods. RPM = 30000000/raw"),
+    MapDef("Boost Cut (No Knock)",        0x481C, 16,  1, "MAP threshold. 148=0 psi, 255=17.4 psi"),
+    MapDef("Boost Cut (Knock)",           0x482D, 17,  1, "MAP threshold (knock active)"),
     MapDef("ISV Boost Control",           0x483E, 16,  1),
     MapDef("WOT Fuel",                    0x484E, 16,  1),
-    MapDef("Idle Ignition",               0x485F, 16,  1),
+    MapDef("Idle Ignition",               0x485F, 16,  1, "°BTDC: (210-raw)/2.86"),
+    MapDef("CO Adjust vs MAP",            0x486F, 16,  1),
+    MapDef("WOT Initial Enrichment",      0x4880,  9,  5, "9 RPM × 5 MAP bins (boost only)"),
+    MapDef("Ignition vs IAT",             0x48AD, 16,  1),
 ]
 
 # ── G40 Mk2 layout (addresses confirmed from YOU54F XDF 2014) ───────────────
