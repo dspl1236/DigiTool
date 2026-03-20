@@ -108,6 +108,20 @@ KNOWN_CRCS: Dict[int, dict] = {
         variant=VARIANT_G40_MK2,    label="Polo G40 Mk2 (stock)",
         cal="STOCK",  rev_addr=None,  family=MAP_FAMILY_MK2,    rpm_limit=None,
     ),
+    # ── G60 Corrado — additional stock ROMs (triple-map family) ──────────────
+    # 037906022B — Corrado G60 PG supercharged 160hp stock ROM
+    # Triple-map layout (reset=0x4C14, rev@0x4456=6250 RPM)
+    # Part numbers 037906022B and 037906022DM are early/late revisions of the same ROM
+    0x20e6381f: dict(
+        variant=VARIANT_G60_TRIPLE, label="Corrado G60 PG 160hp — 037906022B (stock)",
+        cal="STOCK",  rev_addr=0x4456, family=MAP_FAMILY_TRIPLE, rpm_limit=6250,
+        note="Early Corrado G60 PG supercharged 160hp. Triple-map. Bosch 037906022B.",
+    ),
+    0xe5e608ac: dict(
+        variant=VARIANT_G60_TRIPLE, label="Corrado G60 — 037906022DM (stock, rev2)",
+        cal="STOCK",  rev_addr=0x4456, family=MAP_FAMILY_TRIPLE, rpm_limit=6250,
+        note="Later Corrado G60 revision. Triple-map. Bosch 037906022DM.",
+    ),
     # ── G60 single-map known tunes ───────────────────────────────────────────
     # Theibach RS G60 — read from 27C512 chip (filename suffix indicates chip read)
     # 398 bytes changed vs Golf G60 stock. Hex-editor tune, no tuner string found.
