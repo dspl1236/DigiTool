@@ -29,6 +29,7 @@ from digitool.rom_profiles import (
     detect_map_sensor, KNOWN_CRCS, RESET_VECTORS,
     VARIANT_PATCHES, CODE_PATCHES_G60, FAMILY_PATCHES,
     MAP_FAMILY_SINGLE, MAP_FAMILY_TRIPLE,
+    G60_SINGLE_XDF_MAPS, G60_SNS_SECONDARY_MAPS,
     DetectionResult,
 )
 
@@ -472,6 +473,54 @@ class TestCodePatches:
         found = any('digilag' in str(v).lower() or 'lag' in str(v).lower()
                     for v in CODE_PATCHES_G60.values())
         assert found, "Digilag patch not found in CODE_PATCHES_G60"
+
+    def test_g60_oxs_disable_patch_present(self):
+        """OXS disable patch (open loop) from VWnut8392 XDF should be in CODE_PATCHES_G60."""
+        assert "oxs_disable" in CODE_PATCHES_G60, "oxs_disable patch missing from CODE_PATCHES_G60"
+        p = CODE_PATCHES_G60["oxs_disable"]
+        assert p["addr"] == 0x624E, f"oxs_disable addr wrong: {hex(p['addr'])}"
+        assert p["stock"] == b'\xBD\x58\x00', "oxs_disable stock bytes wrong"
+        assert p["patch"] == b'\x01\x01\x01', "oxs_disable patch bytes wrong (should be NOP×3)"
+
+    def test_g60_single_xdf_maps_present(self):
+        """XDF community single-map variant tables should be importable and non-empty."""
+        assert len(G60_SINGLE_XDF_MAPS) >= 10, "G60_SINGLE_XDF_MAPS too few entries"
+        names = [m.name for m in G60_SINGLE_XDF_MAPS]
+        assert "Ignition" in names
+        assert "Fuel" in names
+        assert "RPM Scalar" in names
+
+    def test_g60_single_xdf_ign_addr(self):
+        """XDF variant ignition map starts at 0x4000 (not 0x4004)."""
+        ign = next(m for m in G60_SINGLE_XDF_MAPS if m.name == "Ignition")
+        assert ign.data_addr == 0x4000, f"Expected 0x4000, got {hex(ign.data_addr)}"
+        assert "data-logged" in ign.description.lower() or "community" in ign.description.lower()
+
+    def test_g60_single_xdf_fuel_addr(self):
+        """XDF variant fuel map starts at 0x4100."""
+        fuel = next(m for m in G60_SINGLE_XDF_MAPS if m.name == "Fuel")
+        assert fuel.data_addr == 0x4100, f"Expected 0x4100, got {hex(fuel.data_addr)}"
+
+    def test_g60_single_xdf_rpm_scalar_addr(self):
+        """XDF variant RPM scalar at 0x4208 (not 0x420C)."""
+        rpm = next(m for m in G60_SINGLE_XDF_MAPS if m.name == "RPM Scalar")
+        assert rpm.data_addr == 0x4208, f"Expected 0x4208, got {hex(rpm.data_addr)}"
+
+    def test_g60_sns_secondary_maps_present(self):
+        """SNS Stage 5 secondary maps should be defined."""
+        assert len(G60_SNS_SECONDARY_MAPS) == 2, "Expected 2 SNS secondary maps"
+        names = [m.name for m in G60_SNS_SECONDARY_MAPS]
+        assert any("Secondary Ignition" in n for n in names)
+        assert any("Secondary Fuel" in n for n in names)
+
+    def test_g60_sns_secondary_map_addrs(self):
+        """SNS secondary ign at 0x5E00, fuel at 0x5F00."""
+        ign  = next(m for m in G60_SNS_SECONDARY_MAPS if "Ignition" in m.name)
+        fuel = next(m for m in G60_SNS_SECONDARY_MAPS if "Fuel" in m.name)
+        assert ign.data_addr  == 0x5E00, f"SNS ign addr wrong: {hex(ign.data_addr)}"
+        assert fuel.data_addr == 0x5F00, f"SNS fuel addr wrong: {hex(fuel.data_addr)}"
+        assert ign.cols == 16 and ign.rows == 16
+        assert fuel.cols == 16 and fuel.rows == 16
 
     def test_rev_limit_in_result(self):
         # G60 stock CRC → rpm_limit is set

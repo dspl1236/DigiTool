@@ -211,9 +211,29 @@ class MapDef:
 
 
 # ── G60 Single-Map / G40 Mk3 layout (shared firmware base, 0x4004 origin) ──
+#
+# NOTE — FIRMWARE SUB-VARIANT DISCREPANCY:
+#   The addresses below (0x4004 origin, ign/fuel at 0x4004/0x4104) come from
+#   a sub-variant of the Corrado G60 single-map ROM that is NOT the most
+#   common retail firmware.  Community XDFs (VWnut8392 v3.0 data-logged on
+#   live vehicles, validated via TunerPro tracing) place ign at 0x4000, fuel
+#   at 0x4100, RPM scalar at 0x4208, and many subsequent tables at addresses
+#   ~4 bytes lower than recorded here.  The two sets correspond to different
+#   firmware sub-versions (same ECU hardware, different Bosch calibration
+#   versions).  Addresses here are UNVALIDATED against stock binary; the XDF
+#   community variant is likely more common.  Do not tune from these addresses
+#   without first confirming ign map alignment on a real stock ROM.
+#
+#   IGNITION FORMULA NOTE:
+#   This layout uses (210-raw)/2.86 = °BTDC consistent with DF2.
+#   Community XDFs for G60 single-map use (raw * -0.351563)+78 which yields
+#   ~4 deg different values at typical operating ranges.  The XDF formula was
+#   validated via timing-light data-logging on live Corrado G60 vehicles.
+#   The correct formula for G60 single-map is UNCONFIRMED; do not rely on
+#   absolute degree values until verified against a timing light.
 G60_SINGLE_MAPS: List[MapDef] = [
-    MapDef("Ignition",              0x4004, 16, 16, "°BTDC: (210-raw)/2.86"),
-    MapDef("Fuel",                  0x4104, 16, 16, "Raw fuel map"),
+    MapDef("Ignition",              0x4004, 16, 16, "°BTDC: (210-raw)/2.86 — UNVALIDATED sub-variant"),
+    MapDef("Fuel",                  0x4104, 16, 16, "Raw fuel map — UNVALIDATED sub-variant"),
     MapDef("RPM Scalar",            0x420C, 16,  1, "16×1, 16-bit values"),
     MapDef("Coil Dwell",            0x422C, 16,  1),
     MapDef("Knock Multiplier",      0x424C, 16,  1),
@@ -248,6 +268,80 @@ G60_SINGLE_MAPS: List[MapDef] = [
 
 # G40 Mk3 — same layout as G60 single but different rev limit address
 G40_MK3_MAPS = G60_SINGLE_MAPS  # identical map layout
+
+# ── G60 Single-Map XDF variant (0x4000 origin) — community data-logged ───
+# Source: VWnut8392 TunerPro XDF v3.0 (2015), validated via live tracing on
+# Corrado G60 vehicles.  This is the more commonly encountered retail firmware
+# version.  Ign/fuel maps start at 0x4000/0x4100 (not 0x4004/0x4104).
+#
+# Ignition formula: (raw * -0.351563)+78 = °BTDC  (G60 single-map, data-logged)
+# RPM scalar formula: 15,000,000/raw  (same divisor as triple-map)
+# Idle RPM scalar formula: 30,000,000/raw (double — different timer prescaler)
+G60_SINGLE_XDF_MAPS: List[MapDef] = [
+    MapDef("Ignition",              0x4000, 16, 16, "°BTDC: (raw*-0.351563)+78 — community data-logged"),
+    MapDef("Fuel",                  0x4100, 16, 16, "Duty: raw*0.392 = %"),
+    MapDef("RPM Scalar",            0x4208, 16,  1, "16×1 16-bit. RPM = 15000000/raw"),
+    MapDef("Coil Dwell",            0x4228, 16,  1),
+    MapDef("Knock Multiplier",      0x4248, 16,  1, "raw/8 multiplier"),
+    MapDef("Max Advance",           0x4238, 16,  1, "°BTDC limit"),
+    MapDef("Knock Retard Rate",     0x4258, 16,  1, "raw*4 = retard step"),
+    MapDef("Knock Decay Rate",      0x4268, 16,  1, "raw*4 = recovery step"),
+    MapDef("Min MAP for Knock",     0x4278, 16,  1, "MAP threshold. 148=0 psi, 255=17.4 psi"),
+    MapDef("Advance vs ECT",        0x4288, 16,  1),
+    MapDef("Idle Advance Time",     0x4299, 16,  1),
+    MapDef("Idle Ign High Limit",   0x42A9, 16,  1),
+    MapDef("Idle Ign Low Limit",    0x42B9, 16,  1),
+    MapDef("IAT Compensation",      0x42DA, 16,  1, "raw*0.392 = %"),
+    MapDef("ECT Compensation 1",    0x42EB, 16,  1, "Warmup enrichment"),
+    MapDef("Startup Enrichment",    0x430D, 16,  1),
+    MapDef("Startup Enrich vs ECT", 0x431E, 16,  1),
+    MapDef("Battery Compensation",  0x432F, 16,  1),
+    MapDef("Antilog Table",         0x4340, 16,  1, "Firmware lookup table — do not edit"),
+    MapDef("Accel Enrich Min ΔMAP", 0x4351, 16,  1),
+    MapDef("Accel Enrich Mult ECT", 0x4361, 16,  1, "raw*0.392 = %"),
+    MapDef("Accel Enrich Adder ECT",0x4372, 16,  1, "raw*0.392 = %"),
+    MapDef("Ignition Related 1",    0x4383, 16,  1),
+    MapDef("OXS Upswing",           0x43A4, 16,  4, "16 RPM × 4 MAP bins"),
+    MapDef("OXS Downswing",         0x43E4, 16,  4, "16 RPM × 4 MAP bins"),
+    MapDef("OXS Decay Interval",    0x4424, 16,  1),
+    MapDef("ECT Scalar",            0x4445, 16,  1, "16-bit. RPM = 30000000/raw (idle timer)"),
+    MapDef("Rev Limit #2",          0x4456,  1,  1, "16-bit BE. RPM = 30000000/raw"),
+    MapDef("Idle RPM scalar",       0x4445, 16,  1, "16-bit. 30000000/raw"),
+    MapDef("Startup ISV vs ECT",    0x4434, 16,  1),
+    MapDef("Idle Speed 1",          0x44A7, 16,  1),
+    MapDef("Idle Speed 2",          0x44B8, 16,  1),
+    MapDef("ISV Related 2",         0x4487, 16,  1),
+    MapDef("ISV Related 3",         0x4497, 16,  1),
+    MapDef("ISV Related 4",         0x44C9, 16,  1),
+    MapDef("Boost Cut (No Knock)",  0x44D9, 16,  1, "MAP threshold. 148=0 psi"),
+    MapDef("Boost Cut (Knock)",     0x44EA, 16,  1),
+    MapDef("ISV Boost Control",     0x44FB, 16,  1),
+    MapDef("Idle Ignition",         0x451C, 16,  1, "°BTDC: (raw*-0.351563)+78"),
+    MapDef("CO Adjust vs MAP",      0x452C, 16,  1),
+    MapDef("WOT Fuel",              0x450B, 16,  1),
+    MapDef("WOT Initial Enrichment",0x453D,  9,  5, "9 RPM × 5 MAP bins (boost only)"),
+    MapDef("Ignition vs IAT",       0x456A, 16,  1),
+    MapDef("Ignition Related 2",    0x457B, 16,  1),
+    MapDef("Ignition Related 3",    0x458C, 16,  1),
+    MapDef("Ignition Related 4",    0x459C, 16,  1),
+    MapDef("Ignition Related 5",    0x45AC, 16,  1),
+    MapDef("Ignition Related 6",    0x45BC, 16,  1),
+    MapDef("Ignition Related 7",    0x45CC, 16,  1),
+    MapDef("Ignition Related 8",    0x45DC, 16,  1),
+    MapDef("Ignition Related 9",    0x45EC, 16,  1),
+]
+
+# ── G60 Single-Map SNS Stage 5 secondary maps (patched firmware only) ───
+# SNS Stage 5 patches inject a map-switching routine triggered by grounding
+# ECU pin 20 (MIL wire).  When triggered, firmware switches to these
+# secondary maps located in the 0x41 fill region.  Address from XDF by
+# VWnut8392 (2015) with SNS copyright strings confirmed at 0x582x range.
+G60_SNS_SECONDARY_MAPS: List[MapDef] = [
+    MapDef("Secondary Ignition (SNS)", 0x5E00, 16, 16,
+           "SNS Stage 5 only. °BTDC: (raw*-0.351563)+78. Active when pin 20 grounded."),
+    MapDef("Secondary Fuel (SNS)",     0x5F00, 16, 16,
+           "SNS Stage 5 only. Duty: raw*0.392 = %. Active when pin 20 grounded."),
+]
 
 # ── G60 Triple-Map layout (0x4000 origin) ───────────────────────────────────
 G60_TRIPLE_MAPS: List[MapDef] = [
@@ -322,6 +416,12 @@ CODE_PATCHES_G60 = {
     "digilag_hi":  dict(addr=0x6347, stock=b'\x03\x00', patch=b'\x00\x00',         label="Digilag (high RPM)"),
     "open_loop":   dict(addr=0x6269, stock=b'\xBD\x6D\x07', patch=b'\x01\x01\x01', label="Open Loop Lambda"),
     "isv_disable": dict(addr=0x6287, stock=b'\xBD\x66\x0C', patch=b'\x01\x01\x01', label="ISV Disable"),
+    # OXS (lambda sensor) disable — from VWnut8392 XDF.  Replaces JSR to
+    # lambda ISR at 0x624E with NOP×3 so ECU stays in open loop permanently.
+    # Applies to G60 single-map XDF variant (0x4000 origin).  Stock bytes
+    # confirmed from XDF patchdata/basedata fields: BD 58 00 → 01 01 01.
+    "oxs_disable": dict(addr=0x624E, stock=b'\xBD\x58\x00', patch=b'\x01\x01\x01',
+                        label="OXS Disable (open loop permanent)"),
 }
 
 # G40 Mk3 patches (reset vector 54AA)
