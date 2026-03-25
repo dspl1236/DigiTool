@@ -493,6 +493,10 @@ class MainWindow(QMainWindow):
             return
 
         self._rom = self._collect_rom()
+        # Fix G40 checksum if applicable (no-op for G60)
+        from digitool.rom_profiles import fix_g40_checksum, verify_g40_checksum
+        self._rom = fix_g40_checksum(bytearray(self._rom))
+        chk_ok, chk_msg = verify_g40_checksum(bytes(self._rom))
         try:
             with open(path, "wb") as f:
                 f.write(self._rom)
@@ -501,7 +505,10 @@ class MainWindow(QMainWindow):
             self.lbl_rom_name.setText(
                 f"{short}  \u00b7  {self._result.label}" if self._result else short
             )
-            self.statusbar.showMessage(f"Saved: {path}", 4000)
+            status = f"Saved: {path}"
+            if "G40 checksum" in chk_msg:
+                status += f"  ({chk_msg})"
+            self.statusbar.showMessage(status, 4000)
         except OSError as e:
             QMessageBox.critical(self, "Save Error", str(e))
 
@@ -514,6 +521,8 @@ class MainWindow(QMainWindow):
         if not path:
             return
         self._rom = self._collect_rom()
+        from digitool.rom_profiles import fix_g40_checksum
+        self._rom = fix_g40_checksum(bytearray(self._rom))
         try:
             with open(path, "wb") as f:
                 f.write(self._rom)

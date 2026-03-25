@@ -189,6 +189,38 @@ PATCH_DB: list[ImmoPatch] = [
         notes       = "Context: LDAA #37 / JSR 0xE46E / CMPB #0 / BNE +2 / STAA 0x6D",
     ),
 
+    # ── ABF — Strategy C: Patch the main-loop RAM 0x015B immo status checks ──
+    # Independent immo check layer using RAM 0x015B as status byte.
+    # Magic value 0x16 = "immo OK". Three read sites, one write site.
+    # The write at 0x13AD (LDAA #0x16; STAA 0x015B) always stores 0x16,
+    # suggesting this layer may already pass — but the fail handler at
+    # 0x1229 exists as a safety net and should be NOPed for certainty.
+    #
+    # Confirmed by binary analysis (March 2026): direct ROM dump scan for
+    # all references to RAM 0x015B. Pattern: LDAA 0x015B / CMPA #0x16 /
+    # BEQ skip / JSR fail_handler.
+    #
+    # Strategy C is the most conservative — patches JSR→NOP at one site
+    # in the main loop. Apply alongside Strategy A for belt-and-suspenders.
+    ImmoPatch(
+        ecu_pn      = "037906024G (ABF — Strategy C: main loop 0x015B check)",
+        rom_crc     = 0x78462536,
+        patch_addr  = 0x1229,       # File offset (CPU 0x9229)
+        original    = bytes([0xBD, 0x95, 0x69]),   # JSR 0x9569 (fail handler)
+        patched     = bytes([0x01, 0x01, 0x01]),   # NOP NOP NOP
+        description = "ABF immo bypass Strategy C — NOP the main-loop fail handler "
+                      "called when RAM 0x015B != 0x16 (immo OK magic).",
+        confidence  = "PROVISIONAL",
+        notes       = (
+            "Pattern: LDAA 0x015B / CMPA #0x16 / BEQ +3 / JSR 0x9569\n"
+            "RAM 0x015B is the immo status byte. 0x16 = 'immo OK'.\n"
+            "The write at 0x13AD already stores 0x16 unconditionally,\n"
+            "but this patch ensures the fail handler is never reached.\n"
+            "Apply alongside Strategy A (0x4C1C + 0x4C32) for complete bypass.\n"
+            "Confirmed from binary analysis of 037906024G stock dump."
+        ),
+    ),
+
     ImmoPatch(
         ecu_pn      = "1H0906025 / 1H0906025A / 1H0906025B (ABF later variants)",
         rom_crc     = None,

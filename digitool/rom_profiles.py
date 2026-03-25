@@ -415,6 +415,10 @@ CODE_PATCHES_G60 = {
     "digilag_hi":  dict(addr=0x6347, stock=b'\x03\x00', patch=b'\x00\x00',         label="Digilag (high RPM)"),
     "open_loop":   dict(addr=0x6269, stock=b'\xBD\x6D\x07', patch=b'\x01\x01\x01', label="Open Loop Lambda"),
     "isv_disable": dict(addr=0x6287, stock=b'\xBD\x66\x0C', patch=b'\x01\x01\x01', label="ISV Disable"),
+    # Boost cut disable — confirmed from vw6636 stock vs modified ROM diff.
+    # JSR 0x64DE calls the overboost cut subroutine. NOP×3 removes the cut
+    # entirely. Use with caution — requires mechanical wastegate safety.
+    "boost_cut":   dict(addr=0x6662, stock=b'\xBD\x64\xDE', patch=b'\x01\x01\x01', label="Boost Cut Disable"),
     # OXS (lambda sensor) disable — from VWnut8392 XDF.  Replaces JSR to
     # lambda ISR at 0x624E with NOP×3 so ECU stays in open loop permanently.
     # Applies to G60 single-map XDF variant (0x4000 origin).  Stock bytes
@@ -455,6 +459,7 @@ CODE_PATCHES_G40 = {
 CODE_PATCHES_TRIPLE = {
     "open_loop":   dict(addr=0x6269, stock=b'\xBD\x6D\x07', patch=b'\x01\x01\x01', label="Open Loop Lambda"),
     "isv_disable": dict(addr=0x6287, stock=b'\xBD\x66\x0C', patch=b'\x01\x01\x01', label="ISV Disable"),
+    "boost_cut":   dict(addr=0x6662, stock=b'\xBD\x64\xDE', patch=b'\x01\x01\x01', label="Boost Cut Disable"),
 }
 
 # Backwards-compat alias — default to G60 table (used by code_flags when family unknown)
@@ -503,10 +508,67 @@ def rpm_to_rev_limit(rpm: int) -> int:
 # ---------------------------------------------------------------------------
 
 CHECKSUM_INFO = {
-    MAP_FAMILY_SINGLE: dict(note="G60 single-map / G40 Mk3 — checksum algorithm TBD"),
-    MAP_FAMILY_TRIPLE: dict(note="G60 triple-map — checksum algorithm TBD"),
-    MAP_FAMILY_MK2:    dict(note="G40 Mk2 — checksum algorithm TBD"),
+    MAP_FAMILY_SINGLE: dict(note="G60 — no enforced checksum (0x7F00+ is 0x41 padding)"),
+    MAP_FAMILY_TRIPLE: dict(note="G60 triple — no enforced checksum (same padding)"),
+    MAP_FAMILY_MK2:    dict(note="G40 Mk2 — checksum at 0x7F07, see fix_g40_checksum()"),
 }
+
+# ── G40 internal checksum ─────────────────────────────────────────────────────
+# G40 ROMs have a structured header at 0x7F00-0x7F07:
+#   [len] [variant_id] [00 30] [90 60] [22] [checksum]
+# The checksum at 0x7F07 satisfies:
+#   (sum(rom[0x0000:0x7F00]) + rom[0x7F07]) % 256 == 0xF8
+# Confirmed from stock G40 (0261.200.330) and 7k rev limit mod.
+#
+# G60 ROMs have no such header — 0x7F00+ is all 0x41 padding.
+# The ECU may not enforce this checksum at boot (WOT/Lambda mod has wrong
+# checksum and reportedly runs fine), but we fix it for correctness.
+#
+G40_CHECKSUM_ADDR    = 0x7F07
+G40_CHECKSUM_RANGE   = (0x0000, 0x7F00)
+G40_CHECKSUM_TARGET  = 0xF8
+
+def fix_g40_checksum(rom: bytearray) -> bytearray:
+    """
+    Recalculate and fix the G40 internal checksum at 0x7F07.
+    Returns the modified ROM. No-op if the header region is all 0x41 (G60 padding).
+    """
+    # Only fix if the header region has structured data (not all 0x41 padding)
+    header = rom[0x7F00:0x7F08]
+    if all(b == 0x41 for b in header):
+        return rom  # G60 — no checksum to fix
+
+    start, end = G40_CHECKSUM_RANGE
+    data_sum = sum(rom[start:end]) % 256
+    new_chk = (G40_CHECKSUM_TARGET - data_sum) % 256
+    old_chk = rom[G40_CHECKSUM_ADDR]
+
+    if old_chk != new_chk:
+        rom[G40_CHECKSUM_ADDR] = new_chk
+
+    return rom
+
+def verify_g40_checksum(rom: bytes) -> tuple:
+    """
+    Verify the G40 checksum. Returns (valid: bool, message: str).
+    Returns (True, "no checksum") for G60 ROMs.
+    """
+    header = rom[0x7F00:0x7F08]
+    if all(b == 0x41 for b in header):
+        return True, "G60 variant — no internal checksum (0x7F00 is padding)"
+
+    start, end = G40_CHECKSUM_RANGE
+    data_sum = sum(rom[start:end]) % 256
+    stored = rom[G40_CHECKSUM_ADDR]
+    actual = (data_sum + stored) % 256
+
+    if actual == G40_CHECKSUM_TARGET:
+        return True, f"G40 checksum OK (0x{stored:02X} at 0x{G40_CHECKSUM_ADDR:04X})"
+    else:
+        expected = (G40_CHECKSUM_TARGET - data_sum) % 256
+        return False, (f"G40 checksum INVALID: stored 0x{stored:02X}, "
+                       f"expected 0x{expected:02X} at 0x{G40_CHECKSUM_ADDR:04X}")
+
 
 def compute_checksum(rom: bytes) -> int:
     """CRC32 of the full 32KB ROM."""
