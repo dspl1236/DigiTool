@@ -93,7 +93,7 @@ class MapPanel(QWidget):
         return rom
 
     def _on_cell(self, row: int, col: int, raw: int, display: float):
-        addr = (self._map_def.data_addr + row * 16 + col) if self._map_def else 0
+        addr = (self._map_def.data_addr + row * self._map_def.cols + col) if self._map_def else 0
         self.lbl_cell.setText(f"Cell: [{row},{col}]")
         self.lbl_addr.setText(f"Addr: 0x{addr:04X}")
         self.lbl_raw.setText(f"Raw: {raw}")

@@ -145,11 +145,10 @@ class TestFamilyMaps:
             assert 0 <= m.data_addr < 0x8000, \
                 f"DF3 ABA {m.name}: addr 0x{m.data_addr:04X} out of 32KB"
         for m in DF3_ABF_MAPS:
-            # CPU-space: 0x8000–0xFFFF (physical = addr - 0x8000)
-            assert 0x8000 <= m.data_addr <= 0xFFFF, \
-                f"DF3 ABF {m.name}: addr 0x{m.data_addr:04X} not in CPU-space 0x8000–0xFFFF"
-            phys = m.data_addr - 0x8000
-            assert phys + m.size <= 0x8000, \
+            # Physical addresses (converted from CPU-space by subtracting 0x8000)
+            assert 0 <= m.data_addr < 0x8000, \
+                f"DF3 ABF {m.name}: addr 0x{m.data_addr:04X} out of 32KB"
+            assert m.data_addr + m.size <= 0x8000, \
                 f"DF3 ABF {m.name}: overflows 32KB physical"
 
 

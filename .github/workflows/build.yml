@@ -25,6 +25,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install PyQt5 pyinstaller
 
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
       - name: Get version
         id: ver
         shell: python

@@ -126,6 +126,7 @@ class _PatchCard(QFrame):
     """One row per PATCH_DB entry — shows status, verify/apply controls."""
 
     sig_log = pyqtSignal(str)
+    sig_applied = pyqtSignal(bytearray)   # emitted after a patch mutates the ROM
 
     def __init__(self, patch: ImmoPatch, parent=None):
         super().__init__(parent)
@@ -273,6 +274,7 @@ class _PatchCard(QFrame):
         try:
             self._rom, msg = apply_patch(self._rom, self._patch)
             self.sig_log.emit(f"[{self._patch.ecu_pn}]  {msg}")
+            self.sig_applied.emit(self._rom)
             self._refresh_status()
         except ImmoPatchError as e:
             self.sig_log.emit(f"[{self._patch.ecu_pn}]  ERROR: {e}")
@@ -468,6 +470,7 @@ class ImmoTab(QWidget):
             for patch in patches:
                 card = _PatchCard(patch, self)
                 card.sig_log.connect(self._append_log)
+                card.sig_applied.connect(self._on_patch_applied)
                 if self._rom is not None:
                     card.load_rom(bytearray(self._rom))
                 self._cards.append(card)
@@ -485,10 +488,8 @@ class ImmoTab(QWidget):
 
     def _append_log(self, msg: str):
         self._log.append(msg)
-        # Propagate mutated ROM upward
-        for card in self._cards:
-            rom = card.get_rom()
-            if rom is not None:
-                self._rom = rom
-                self.sig_rom_mutated.emit(self._rom)
-                break
+
+    def _on_patch_applied(self, rom: bytearray):
+        """Called only when a _PatchCard actually mutates the ROM."""
+        self._rom = rom
+        self.sig_rom_mutated.emit(self._rom)

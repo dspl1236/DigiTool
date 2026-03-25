@@ -6,7 +6,7 @@ ROM diff tool — compare two .BIN files byte-by-byte, grouped by map region.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTableWidget, QTableWidgetItem,
-    QHeaderView, QFileDialog
+    QHeaderView, QFileDialog, QMessageBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QBrush, QFont
@@ -83,8 +83,12 @@ class DiffTab(QWidget):
         )
         if not path:
             return
-        with open(path, "rb") as f:
-            data = f.read()
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except OSError as e:
+            QMessageBox.critical(self, "Error", f"Could not read file:\n{e}")
+            return
         if len(data) != 0x8000:
             return
 

@@ -304,9 +304,8 @@ G60_SINGLE_XDF_MAPS: List[MapDef] = [
     MapDef("OXS Upswing",           0x43A4, 16,  4, "16 RPM × 4 MAP bins"),
     MapDef("OXS Downswing",         0x43E4, 16,  4, "16 RPM × 4 MAP bins"),
     MapDef("OXS Decay Interval",    0x4424, 16,  1),
-    MapDef("ECT Scalar",            0x4445, 16,  1, "16-bit. RPM = 30000000/raw (idle timer)"),
+    MapDef("Idle RPM vs ECT",       0x4445, 16,  1, "16-bit. RPM = 30000000/raw (idle timer)"),
     MapDef("Rev Limit #2",          0x4456,  1,  1, "16-bit BE. RPM = 30000000/raw"),
-    MapDef("Idle RPM scalar",       0x4445, 16,  1, "16-bit. 30000000/raw"),
     MapDef("Startup ISV vs ECT",    0x4434, 16,  1),
     MapDef("Idle Speed 1",          0x44A7, 16,  1),
     MapDef("Idle Speed 2",          0x44B8, 16,  1),
@@ -357,7 +356,7 @@ G60_TRIPLE_MAPS: List[MapDef] = [
     MapDef("Coil Dwell",                  0x4520, 16,  1),
     MapDef("Max Advance",                 0x4530, 16,  1, "°BTDC limit: (210-raw)/2.86"),
     MapDef("Knock Multiplier",            0x4540, 16,  1, "raw/8 multiplier"),
-    MapDef("Advance vs ECT",              0x4587, 16,  1),
+    MapDef("Advance vs ECT",              0x4578, 16,  1),
     MapDef("Min MAP for Knock Retard",    0x4588, 16,  1, "MAP threshold. 148=0 psi, 255=17.4 psi"),
     MapDef("Idle Advance Time",           0x4598, 16,  1),
     MapDef("Idle Ign High Limit",         0x45A8, 16,  1),
@@ -1199,21 +1198,21 @@ DF3_ABF_MAPS: List[MapDef] = [
     #
     # NOTE: Physical addresses observed and CPU mapping confirmed; map alignment
     # within the calibration block is UNCONFIRMED until a second ROM diff is done.
-    MapDef("Ignition",              0x8117, 16, 16,
+    MapDef("Ignition",              0x0117, 16, 16,
            "°BTDC: (210-raw)/2.86 — formula assumed same as Digi 1/2. "
-           "CPU addr 0x8117 = physical 0x0117. "
+           "Physical 0x0117 (CPU 0x8117). "
            "CANDIDATE — confirmed from single ROM, needs second ROM to verify alignment."),
-    MapDef("Fuel",                  0x84C0, 16, 16,
-           "Raw fuel map. CPU 0x84C0 = physical 0x04C0. "
+    MapDef("Fuel",                  0x04C0, 16, 16,
+           "Raw fuel map. Physical 0x04C0 (CPU 0x84C0). "
            "Value range differs from Digi 1 — scaling unconfirmed. UNCONFIRMED."),
-    MapDef("Warm Up Enrichment",    0x8500, 18,  1,
-           "Cold-start enrichment vs ECT. CPU 0x8500 = phys 0x0500. UNCONFIRMED."),
-    MapDef("Idle Ignition",         0x85C0, 16,  1,
-           "CPU 0x85C0 = phys 0x05C0. UNCONFIRMED."),
-    MapDef("Boost Cut (No Knock)",  0x86E4, 17,  1,
-           "CPU 0x86E4 = phys 0x06E4. UNCONFIRMED."),
-    MapDef("WOT Enrichment",        0x8750, 17,  1,
-           "CPU 0x8750 = phys 0x0750. UNCONFIRMED."),
+    MapDef("Warm Up Enrichment",    0x0500, 18,  1,
+           "Cold-start enrichment vs ECT. Physical 0x0500 (CPU 0x8500). UNCONFIRMED."),
+    MapDef("Idle Ignition",         0x05C0, 16,  1,
+           "Physical 0x05C0 (CPU 0x85C0). UNCONFIRMED."),
+    MapDef("Boost Cut (No Knock)",  0x06E4, 17,  1,
+           "Physical 0x06E4 (CPU 0x86E4). UNCONFIRMED."),
+    MapDef("WOT Enrichment",        0x0750, 17,  1,
+           "Physical 0x0750 (CPU 0x8750). UNCONFIRMED."),
 ]
 
 # ── Digifant 3 ABA map addresses ─────────────────────────────────────────────

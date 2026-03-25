@@ -38,6 +38,7 @@ class Table1D(QWidget):
         super().__init__(parent)
         self._map_def = map_def
         self._rom: bytearray | None = None
+        self._data: list[int] = []
         self._title_clicked_cb = None   # set by CorrectionTabBase after creation
 
         root = QVBoxLayout(self)
@@ -77,6 +78,7 @@ class Table1D(QWidget):
         md = self._map_def
         data = [rom[md.data_addr + i] if md.data_addr + i < len(rom) else 0
                 for i in range(md.size)]
+        self._data = list(data)
         lo, hi = min(data), max(data)
         self.table.blockSignals(True)
         for r in range(md.rows):
@@ -101,11 +103,10 @@ class Table1D(QWidget):
             self._revert_cell(item)
             return
         r, c = item.row(), item.column()
-        offset = self._map_def.data_addr + r * self._map_def.cols + c
-        if offset < len(self._rom):
-            self._rom[offset] = val
-        all_vals = [self._rom[self._map_def.data_addr + i]
-                    for i in range(self._map_def.size)]
+        idx = r * self._map_def.cols + c
+        if idx < len(self._data):
+            self._data[idx] = val
+        all_vals = list(self._data)
         lo, hi = min(all_vals), max(all_vals)
         self.table.blockSignals(True)
         item.setBackground(QBrush(heat_color(val, lo, hi)))
@@ -113,13 +114,13 @@ class Table1D(QWidget):
         self.table.blockSignals(False)
 
     def _revert_cell(self, item: QTableWidgetItem):
-        if self._rom is None:
+        if not self._data:
             return
         r, c = item.row(), item.column()
-        offset = self._map_def.data_addr + r * self._map_def.cols + c
-        if offset < len(self._rom):
+        idx = r * self._map_def.cols + c
+        if idx < len(self._data):
             self.table.blockSignals(True)
-            item.setText(str(self._rom[offset]))
+            item.setText(str(self._data[idx]))
             self.table.blockSignals(False)
 
     def write_back(self, rom: bytearray) -> bytearray:
@@ -134,7 +135,10 @@ class Table1D(QWidget):
                     val = max(0, min(255, int(it.text())))
                 except ValueError:
                     continue
-                offset = md.data_addr + r * md.cols + c
+                idx = r * md.cols + c
+                if idx < len(self._data):
+                    self._data[idx] = val
+                offset = md.data_addr + idx
                 if offset < len(rom):
                     rom[offset] = val
         self.table.blockSignals(False)
