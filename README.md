@@ -338,6 +338,46 @@ KWPBridge runs as a separate process on the same machine. DigiTool polls every 2
 
 ---
 
+## Known Limitations
+
+The following items are known gaps that need community input or further reverse-engineering to resolve. If you can help with any of these, please [open an issue](https://github.com/dspl1236/DigiTool/issues).
+
+### No ECU checksum recalculation
+
+DigiTool computes a CRC32 for ROM identification but does **not** recalculate the ECU's internal checksum after editing. If Digifant 1/2/3 firmware validates a ROM checksum at boot, edited ROMs may be rejected. The checksum algorithm for all variants is currently unknown (`CHECKSUM_INFO` in `rom_profiles.py` says "TBD").
+
+**What's needed:** Disassembly of the startup routine to determine if/how the ECU validates ROM integrity. If you have a logic analyser trace or Ghidra annotation showing the checksum algorithm, please share it.
+
+### DF2 / DF3 ABA map addresses are unconfirmed
+
+All map addresses for Digifant 2 (2E, PF) and Digifant 3 ABA/ADY are placeholders derived from cross-referencing other variants. They have not been verified against real ROM diffs.
+
+**What's needed:** Two or more ROM dumps from the same variant (stock + tuned, or different production dates) to confirm map locations via byte-diff. Any DF2 or DF3 ABA EPROM reads are welcome.
+
+### DF2 / DF3 ABA code patches use placeholder addresses
+
+The code patch entries for DF2 and DF3 ABA variants (`CODE_PATCHES_DF2`, `CODE_PATCHES_DF3_ABA` in `rom_profiles.py`) have `addr=0x0000`. These are safety-locked — the apply function refuses to use them — but they need real addresses before they can be activated.
+
+**What's needed:** Ghidra disassembly identifying the digilag / open-loop / ISV routines in DF2 and DF3 ABA firmware.
+
+### Immobilizer patches are PROVISIONAL
+
+All immo bypass entries in `immo_patches.py` have `confidence = "PROVISIONAL"` or `"UNCONFIRMED"`. The Apply button is locked until an entry is promoted to `"CONFIRMED"`. See the Ghidra Workflow section above for how to confirm patch addresses.
+
+**What's needed:** Ghidra trace of the immo check subroutine in ABF (037906024G) and ABA ROMs. The conditional branch after the I/O pin read is the patch target.
+
+### Ignition display formula is lossy at extreme values
+
+The ignition formula `(210 - raw) / 2.86` and its inverse `round(210 - deg * 2.86)` are not guaranteed to round-trip losslessly for all 256 possible byte values. In practice the error is at most 1 raw count for a small number of values. The editor stores raw bytes internally and only converts for display, so this only affects manually typed degree values.
+
+### Triple-map code patch addresses may differ from single-map
+
+`CODE_PATCHES_TRIPLE` reuses the same addresses as `CODE_PATCHES_G60` for `open_loop` (0x6269) and `isv_disable` (0x6287). If the triple-map firmware has these routines at different addresses, toggling the patches would corrupt unrelated code. These have only been verified on single-map ROMs.
+
+**What's needed:** Confirmation of `open_loop` and `isv_disable` addresses on a triple-map ROM via disassembly or byte-diff comparison.
+
+---
+
 ## Data Sources
 
 Map offsets, code-patch locations, and ROM fingerprints derived from:
